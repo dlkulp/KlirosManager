@@ -1,0 +1,12 @@
+{
+    "scripts": {
+        "start": "tsc jimptest.ts && node jimptest"
+    },
+    "dependencies": {},
+    "devDependencies": {
+        "@types/node": "^17.0.8",
+        "fs": "0.0.1-security",
+        "jimp": "^0.16.1",
+        "typescript": "^4.5.4"
+    }
+}
