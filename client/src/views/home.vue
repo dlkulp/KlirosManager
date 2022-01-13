@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref } from "vue"
-import Button from "primevue/button";
 
 //defineProps<{ msg: string }>()
+
+const vis = ref(true)
 
 const count = ref(0)
 </script>
