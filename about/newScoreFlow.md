@@ -9,3 +9,5 @@
     * Return potentially duplicated scores and allow the user to verify 
       1. is this actually a duplicate
       2. if it is truly a duplicate, which score is more legible and less marked up/noisy/discolored/etc
+
+[<- Back](README.md)

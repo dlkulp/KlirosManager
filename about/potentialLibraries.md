@@ -7,3 +7,5 @@
 * Image comparison - https://github.com/mapbox/pixelmatch
 * Image comparison - https://www.npmjs.com/package/jimp
 * Neural network - https://github.com/BrainJS/brain.js
+
+[<- Back](README.md)

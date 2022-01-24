@@ -43,9 +43,13 @@ Many church people are less than enthused about the internet and large corporati
 10. Allow scores to be put into collections of similar items (all the Our Fathers)
 11. Allow scores to be put into order collections (binders) for particular feast days or ranks of feasts (allow export of entire binder as single pdf)
 
+[User flow](newScoreFlow.md)
+
 ## Next Steps
 
 * Add OCR to prepopulate metadata fields
 * Add MusicXML support for generation of midi and additional output types
   * And maybe to support an in browser editor
 * Maybe support the sale and purchase of scores…?
+
+[Potential Frameworks](potentialLibraries.md)
