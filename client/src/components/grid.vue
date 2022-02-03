@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import Card from "primevue/card";
-import Chip from "primevue/chip";
+import kCard from "../components/cards/kCard.vue";
+//import kCardHeader from "../components/cards/kCardHeader.vue";
+import kCardText from "../components/cards/kCardText.vue";
+import kButton from "../components/kButton.vue";
+import kBadge from "../components/kBadge.vue";
 
 interface GridItems {
 	img: {
@@ -18,46 +21,28 @@ defineProps<{ grid: GridItems[] }>();
 
 <template>
 	<div class="grid">
-		<Card v-for="card in grid">
-			<template #header>
-				<div class="trim">
-					<img :alt="card.img.alt" :src="card.img.url">
-				</div>
-			</template>
-			<template #title>
-				{{card.title}}
-			</template>
-			<template #content>
-				<Chip v-for="tag in card.tags" :label="tag" class="p-mr-2 p-mb-2" />
-			</template>
+		<kCard v-for="card in grid" :title="card.title" :imageURL="card.img.url">
+			<kCardText class="card-content">
+				<kBadge v-for="tag in card.tags" type="pill" class="p-mr-2 p-mb-2">{{tag}}</kBadge>
 			<!-- <template #footer>
 				<Button icon="pi pi-check" label="Save" />
 				<Button icon="pi pi-times" label="Cancel" class="p-button-secondary" style="margin-left: .5em" />
 			</template> -->
-		</Card>
+			</kCardText>
+		</kCard>
 	</div>
 </template>
 
-<style scoped>
+<style>
 .grid {
 	padding: 3rem;
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(250px, auto));
 	grid-gap: 1rem;
 }
-.grid .p-card {
-	border-radius: .75rem;
-}
-.trim {
+.card-img-top {
 	width: 100%;
     height: 200px;
     overflow: hidden;
-}
-.p-card img {
-	border-top-left-radius: .75rem;
-	border-top-right-radius: .75rem;
-}
-.p-card .p-chip {
-	font-size: .75rem;
 }
 </style>

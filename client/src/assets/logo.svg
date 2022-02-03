@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="413" height="410" viewBox="0 0 413 410" xml:space="preserve">
+<desc>Kliros Manager Logo</desc>
+<defs>
+</defs>
+<g transform="matrix(2.9 0 0 3.52 206.8 159.7)"  >
+<polygon style="stroke: rgb(0,0,0); stroke-width: 20; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: none; fill-rule: nonzero; opacity: 1;" vector-effect="non-scaling-stroke"  points="0,-42.5 50,42.5 -50,42.5 " />
+</g>
+<g transform="matrix(1 0 0 1 208.03 336.5)"  >
+<line style="stroke: rgb(0,0,0); stroke-width: 20; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(0,0,0); fill-rule: nonzero; opacity: 1;" vector-effect="non-scaling-stroke"  x1="0" y1="-17.5" x2="0" y2="17.5" />
+</g>
+<g transform="matrix(1 0 0 1 207.53 364)"  >
+<line style="stroke: rgb(0,0,0); stroke-width: 20; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(0,0,0); fill-rule: nonzero; opacity: 1;" vector-effect="non-scaling-stroke"  x1="-190.50065616684893" y1="0" x2="190.50065616684893" y2="0" />
+</g>
+<g transform="matrix(1 0 0 1 27.03 391.51)"  >
+<line style="stroke: rgb(0,0,0); stroke-width: 20; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(0,0,0); fill-rule: nonzero; opacity: 1;" vector-effect="non-scaling-stroke"  x1="0" y1="-17.50714140001159" x2="0" y2="17.50714140001159" />
+</g>
+<g transform="matrix(1 0 0 1 388.03 391.51)"  >
+<line style="stroke: rgb(0,0,0); stroke-width: 20; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(0,0,0); fill-rule: nonzero; opacity: 1;"  x1="0" y1="-17.50714140001159" x2="0" y2="17.50714140001159" />
+</g>
+<g transform="matrix(1 -0.06 0.06 1 27.68 299.09)"  >
+<line style="stroke: rgb(0,0,0); stroke-width: 20; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(0,0,0); fill-rule: nonzero; opacity: 1;" vector-effect="non-scaling-stroke"  x1="22.353690970396812" y1="12.905909499140307" x2="-22.353690970396812" y2="-12.905909499140307" />
+</g>
+<g transform="matrix(0.55 -0.83 0.83 0.55 385.71 298.91)"  >
+<line style="stroke: rgb(0,0,0); stroke-width: 20; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(0,0,0); fill-rule: nonzero; opacity: 1;"  x1="22.353690970396812" y1="12.905909499140307" x2="-22.353690970396812" y2="-12.905909499140307" />
+</g>
+</svg>

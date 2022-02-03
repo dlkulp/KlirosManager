@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue"
+import kButton from "../components/kButton.vue";
 
 //defineProps<{ msg: string }>()
 
@@ -27,10 +28,10 @@ const count = ref(0)
 		|
 		<a href="https://v3.vuejs.org/" target="_blank">Vue 3 Docs</a>
 		|
-		<a href="https://www.primefaces.org/primevue/showcase/#/" target="_blank">PrimeVue Docs</a>
+		<a href="https://getbootstrap.com/docs/5.1/" target="_blank">Bootstrap Docs</a>
 	</p>
 
-	<Button @click="count++" :label="`count is: ${count}`"></Button>
+	<kButton @click="count++">count is: {{count}}</kButton>
 	<p>
 		Edit <code>views/home.vue</code> to test hot module replacement.
 	</p>
