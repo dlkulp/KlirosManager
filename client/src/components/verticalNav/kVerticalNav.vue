@@ -1,9 +1,10 @@
 <template>
 <nav id="verticalNav" class="navbar navbar-vertical">
-	<div class="d-flex align-items-center ms-2">
+	<div id="verticalNavHead" class="d-flex align-items-center ms-2">
 		<div class="toggle-icon-wrapper me-2">
 			<button class="btn navbar-vertical-toggle" v-kd-tooltip="{title: 'Toggle Navigation', placement: 'left'}">
 				<font-awesome-icon :icon="['fa', 'bars']" />
+				<span class="visually-hidden">Toggle Dropdown</span>
 			</button>
 		</div>
 		<a class="navbar-brand" :href="brand.route">
@@ -81,6 +82,9 @@ interface Props {
 #verticalNav .navbar-collapse {
 	display: inline-block !important;
 	max-width: 13rem;
+}
+#verticalNavHead {
+	height: 3.5rem;
 }
 #navbarVerticalCollapse {
 	flex-basis: unset;

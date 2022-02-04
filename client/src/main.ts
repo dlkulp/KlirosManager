@@ -3,6 +3,7 @@ import App from "./App.vue";
 import { router } from "./router";
 
 import "bootstrap-dark-5/dist/css/bootstrap-dark.min.css";
+import "@popperjs/core";
 import "bootstrap";
 
 import { library } from "@fortawesome/fontawesome-svg-core";

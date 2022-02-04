@@ -2,6 +2,7 @@
 <nav id="topNav" class="navbar navbar-light navbar-glass navbar-top navbar-expand">
 	<button class="btn navbar-toggler me-1 me-sm-3 collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#navbarVerticalCollapse" aria-controls="navbarVerticalCollapse" aria-expanded="false" aria-label="Toggle Navigation">
 		<font-awesome-icon :icon="['fa', 'bars']" />
+		<span class="visually-hidden">Toggle Dropdown</span>
 	</button>
 	<a class="navbar-brand me-1 me-sm-3" :href="brand.route">
 		<div class="d-flex align-items-center">
@@ -47,7 +48,8 @@ interface Props {
 }
 
 #topNav {
-	min-height: 5.5rem;
+	min-height: 3.5rem;
+	position: -webkit-sticky;
     position: sticky;
     top: 0;
     z-index: 900;

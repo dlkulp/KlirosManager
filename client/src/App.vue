@@ -5,10 +5,15 @@ import { RouterView, RouterLink, useRoute } from "vue-router";
 import {ref, computed, reactive} from "vue";
 import kPageNavigation from "./components/kPageNavigation.vue";
 import kNavItem from "./components/verticalNav/kNavItem.vue";
+import kDropdownItem from "./components/dropdown/kDropdownItem.vue";
+import kDropdownDivider from "./components/dropdown/kDropdownDivider.vue";
+import kUserNav from "./components/kUserNav.vue";
 import logo from "./assets/logo.svg";
+import unknownUser from "./assets/unknown_user.svg";
 
 let url = computed(() => useRoute().name);
 let brand = reactive({route:"/", image: {source: logo, width: 40, title: "Kliros"}});
+let userImage = unknownUser;
 
 const visibleNav = ref(false);
 function toggleNav() {
@@ -49,16 +54,22 @@ const routes = [{
 			<template v-slot:icon><font-awesome-icon class="pe-2" :icon="route.icon" /></template>
 		</kNavItem>
 	</template>
+	<template v-slot:topRight>
+		<kUserNav :userImage="userImage">
+			<kDropdownItem link="/buttons?profile=1">Profile &amp; account</kDropdownItem>
+			<kDropdownItem link="/buttons?feedback=1">Feedback</kDropdownItem>
+			<kDropdownItem link="/buttons?settings=1">Settings</kDropdownItem>
+			<kDropdownDivider />
+			<kDropdownItem link="/buttons?logout=1">Logout</kDropdownItem>
+		</kUserNav>
+	</template>
 	<template v-slot:pageContent>
 		<router-view />
 	</template>
 </kPageNavigation>
 </template>
 
-<style>
-:root {
-	--bs-primary: #A82DE9;
-}
+<style lang="scss">
 @media (prefers-color-scheme: dark) {
 .btn-outline-primary {
 	color: var(--bs-primary);
@@ -69,14 +80,19 @@ body {
 	background-color: var(--surface-a);
     font-family: var(--font-family);
 	color: var(--text-color);
-	--primaryColor: #A82DE9;
-	--primaryDark: #8222B5;
+	// Lenten
+	--lentPrimary: #A82DE9;
+	--lentPrimaryDark: #8222B5;
+	
+	// Vars used globally
+	--primaryColor: var(--lentPrimary);
+	--primaryDark: var(--lentPrimaryDark);
 }
 main {
 	display: flex;
     flex-wrap: nowrap;
-    height: 100vh;
     height: -webkit-fill-available;
+    height: 100vh;
     max-height: 100vh;
     overflow-x: auto;
     overflow-y: hidden;
