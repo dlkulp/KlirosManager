@@ -2,10 +2,6 @@
 	"name": "KlirosManager",
 	"version": "0.0.1",
 	"description": "A music management platform",
-	"scripts": {
-		"start-serve": "node server/server",
-		"start-client": ""
-	},
 	"browserslist": [
 		"> 1%",
 		"last 2 versions",

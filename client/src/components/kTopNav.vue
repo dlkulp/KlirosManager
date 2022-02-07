@@ -13,7 +13,7 @@
 	<div class="ms-3 ms-sm-0">
 		<slot name="left" />
 	</div>
-	<div class="ms-auto">
+	<div class="ms-auto flexRight">
 		<slot name="right" />
 	</div>
 </nav>
@@ -54,5 +54,10 @@ interface Props {
     top: 0;
     z-index: 900;
     background-color: var(--bs-body-bg);
+}
+
+#topNav .flexRight {
+	display: flex;
+    align-items: center;
 }
 </style>

@@ -25,9 +25,9 @@ watch(searchQuery, (query: string, prevQuery: string) => {
 		searchBox.classList.remove("searchBoxEmpty");
 		// Search data
 		results.value = data.value.filter((x: any) => {
-			let ret = x.title.toLowerCase().includes(query.toLowerCase());
-			for (let key of Object.keys(x.metaData))
-				ret = ret || `${key.toLowerCase()} ${(x.metaData as any)[key].toString().toLowerCase()}`.includes(query.toLowerCase());
+			let ret = x.DisplayName.toLowerCase().includes(query.toLowerCase());
+			for (let key of Object.keys(x.MetaData))
+				ret = ret || `${key.toLowerCase()} ${(x.MetaData as any)[key].toString().toLowerCase()}`.includes(query.toLowerCase());
 			return ret;
 		});
 
@@ -65,9 +65,9 @@ onMounted(() => {
 // Temp data for testing UI
 const data: Ref<any> = ref([{
 	id: "0",
-	title: "O Come Let Us Worship",
+	DisplayName: "O Come Let Us Worship",
 	img: {url: comeWorship, alt:"O Come Let Us Worship Music"},
-	metaData: {
+	MetaData: {
 		"Tone Set": "Bulgarian",
 		"Tone": 6,
 		"Chorus": "mixed",
@@ -79,9 +79,9 @@ const data: Ref<any> = ref([{
 	}
 }, {
 	id: "1",
-	title: "Our Father",
+	DisplayName: "Our Father",
 	img: {url: ourFather, alt: "Our Father Music"},
-	metaData: {
+	MetaData: {
 		"Tone Set": "Strochnoi",
 		"Tone": 2,
 		"Chorus": "Mixed",
@@ -93,9 +93,9 @@ const data: Ref<any> = ref([{
 	}
 }, {
 	id: "2",
-	title: "Alleluia",
+	DisplayName: "Alleluia",
 	img: {url: alleluia, alt: "Alleluia Music"},
-	metaData: {
+	MetaData: {
 		"Tone Set": "Znamenny",
 		"Tone": 5,
 		"Chorus": "Mixed",
@@ -107,9 +107,9 @@ const data: Ref<any> = ref([{
 	}
 }, {
 	id: "3",
-	title: "Ode 9 - Advent",
+	DisplayName: "Ode 9 - Advent",
 	img: {url: ode9, alt: "Ode 9 Music"},
-	metaData: {
+	MetaData: {
 		"Tone Set": "",
 		"Tone": "",
 		"Chorus": "Mixed",
@@ -121,9 +121,9 @@ const data: Ref<any> = ref([{
 	}
 }, {
 	id: "4",
-	title: "The Angel Cried",
+	DisplayName: "The Angel Cried",
 	img: {url: angelCried, alt: "The Angel Cried Music"},
-	metaData: {
+	MetaData: {
 		"Tone Set": "",
 		"Tone": "",
 		"Chorus": "Mixed",
@@ -142,7 +142,7 @@ const data: Ref<any> = ref([{
 		<i class="pi pi-search" />
 		<kInput type="text" id="searchScores" v-model="searchQuery" placeholder="Search" autofocus />
 	</span>
-	<Grid id="results" :grid="results" class="searchResultsEmpty"></Grid>
+	<Grid id="results" v-model="results" class="searchResultsEmpty"></Grid>
 	<div id="empty">No scores found, try a different search or <RouterLink to="/upload">upload</RouterLink> a new score.</div>
 </kCard>
 </template>

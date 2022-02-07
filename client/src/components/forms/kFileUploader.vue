@@ -10,13 +10,15 @@
 			:allowFileTypeValidation="allowFileTypeValidation"
 			:allowImagePreview="previewImages"
 			:max-files="maxFiles"
+			:storeAsFile="true"
 			:credits="''"
 			:disabled="disabled"
 			:required="required"
 			:files="files"
 			v-on:initfile="initfile"
 			v-on:processfile="processfile"
-			v-on:removefile="removefile" />
+			v-on:removefile="removefile"
+			v-on:updatefiles="updateFiles" />
 	</k-input-group>
 </template>
 
@@ -25,14 +27,15 @@
 import vueFilePond from "vue-filepond";
 // Import FilePond styles
 import "filepond/dist/filepond.min.css";
-// Import image preview plugin styles
 import "filepond-plugin-image-preview/dist/filepond-plugin-image-preview.min.css";
+import "filepond-plugin-media-preview/dist/filepond-plugin-media-preview.min.css";
 
 // Import FilePond plugins
 
-// Import image preview and file type validation plugins
+// Import preview and file type validation plugins
 import FilePondPluginFileValidateType from "filepond-plugin-file-validate-type";
 import FilePondPluginImagePreview from "filepond-plugin-image-preview";
+import FilePondPluginMediaPreview from "filepond-plugin-media-preview";
 
 import { defineComponent, PropType, Ref, ref, toRefs, watch } from "vue";
 import kInputGroup from "./kInputGroup.vue";
@@ -40,7 +43,8 @@ import kInputGroup from "./kInputGroup.vue";
 // Create component
 const FilePond: any = vueFilePond(
 	FilePondPluginFileValidateType,
-	FilePondPluginImagePreview
+	FilePondPluginImagePreview,
+	FilePondPluginMediaPreview
 );
 
 export default defineComponent({
@@ -69,6 +73,7 @@ export default defineComponent({
 			if (!error) {
 				console.log("FilePond succesfully processed file " + file.filename);
 				uploadedFiles.value.push(file.filename);
+				emit("processfile", file);
 			}
 		}
 
@@ -84,12 +89,17 @@ export default defineComponent({
 			if (idx > -1) uploadedFiles.value.splice(idx, 1);
 		}
 
+		function updateFiles (newFiles: string[]) {
+			files.value = newFiles;
+			emit("updateFiles", newFiles);
+		}
+
 		// Bubble changes up to original context
 		watch(files, newVal => emit("update:modelValue", newVal));
 		watch(modelValue, newVal => files.value = newVal);
 
 		const id = label.value.replace(/\s+/g, '') || window.crypto.getRandomValues(new Uint32Array(1))[0].toString(16);
-		return { id, files, uploadedFiles, processfile, removefile, initfile };
+		return { id, files, uploadedFiles, processfile, removefile, initfile, updateFiles };
 	}
 });
 

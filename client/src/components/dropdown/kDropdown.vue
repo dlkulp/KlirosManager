@@ -17,6 +17,14 @@ import kButton from "../kButton.vue";
 import { defineComponent, onMounted, ref, Ref, watch } from "vue";
 import Dropdown from "bootstrap/js/dist/dropdown.js";
 
+interface Props {
+	type: string;
+	text: string;
+	btnColor: string;
+	btnSize: string;
+	btnVariant: string;
+}
+
 export default defineComponent({
 	components: {kButton},
 	props: {
@@ -26,7 +34,7 @@ export default defineComponent({
 		btnSize: {type: String, default: ""},
 		btnVariant: {type: String, default: "outline"}
 	},
-	setup(_props, {emit}) {
+	setup(props: Props, {emit}) {
 		const dropdownEl: Ref<HTMLElement | null> = ref(null);
 		let dropDown: any = null;
 		function setupDD(el: HTMLElement) {
@@ -55,7 +63,7 @@ export default defineComponent({
 				});
 			}
 		});
-		return { dropdownEl };
+		return { dropdownEl, ...props };
 	}
 });
 </script>

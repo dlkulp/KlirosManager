@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // This starter template is using Vue 3 <script setup> SFCs
 // Check out https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup
-import { RouterView, RouterLink, useRoute } from "vue-router";
+import { RouterView, useRoute } from "vue-router";
 import {ref, computed, reactive} from "vue";
 import kPageNavigation from "./components/kPageNavigation.vue";
 import kNavItem from "./components/verticalNav/kNavItem.vue";
@@ -10,15 +10,31 @@ import kDropdownDivider from "./components/dropdown/kDropdownDivider.vue";
 import kUserNav from "./components/kUserNav.vue";
 import logo from "./assets/logo.svg";
 import unknownUser from "./assets/unknown_user.svg";
+import { makeRequestAsync } from "./helpers/helpers";
 
 let url = computed(() => useRoute().name);
 let brand = reactive({route:"/", image: {source: logo, width: 40, title: "Kliros"}});
-let userImage = unknownUser;
+let userImage = ref(unknownUser);
+let signedIn = ref(false);
 
 const visibleNav = ref(false);
 function toggleNav() {
 	visibleNav.value = !visibleNav.value;
 }
+
+const user: any = ref();
+async function setupUser() {
+	user.value = await makeRequestAsync({ url: "/api/v1/user", verb: "get"});
+	if (typeof user.value == "string" || user.value?.err) {
+		signedIn.value = false;
+		userImage.value = unknownUser;
+	}
+	else {
+		signedIn.value = true;
+		userImage.value = user.value.photo;
+	}
+};
+setupUser();
 
 const routes = [{
 	label: "Home",
@@ -55,12 +71,16 @@ const routes = [{
 		</kNavItem>
 	</template>
 	<template v-slot:topRight>
+		<small v-if="signedIn" class="me-2">
+			Hello {{user.name.split(" ")[0]}}!
+		</small>
 		<kUserNav :userImage="userImage">
 			<kDropdownItem link="/buttons?profile=1">Profile &amp; account</kDropdownItem>
 			<kDropdownItem link="/buttons?feedback=1">Feedback</kDropdownItem>
-			<kDropdownItem link="/buttons?settings=1">Settings</kDropdownItem>
+			<kDropdownItem link="/api/v1/user">Settings</kDropdownItem>
 			<kDropdownDivider />
-			<kDropdownItem link="/buttons?logout=1">Logout</kDropdownItem>
+			<kDropdownItem v-if="signedIn" link="/logout">Logout</kDropdownItem>
+			<kDropdownItem v-else link="/login/federated/accounts.google.com">Login</kDropdownItem>
 		</kUserNav>
 	</template>
 	<template v-slot:pageContent>

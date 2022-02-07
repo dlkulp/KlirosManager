@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model collection {
+  id                Int                 @id @default(autoincrement())
+  Name              String              @db.VarChar(255)
+  Public            Boolean?            @default(false)
+  UserId            Int?
+  user              user?               @relation(fields: [UserId], references: [UserID], onDelete: Restrict, onUpdate: Restrict, map: "collection_ibfk_1")
+  collection_member collection_member[]
+
+  @@index([UserId], map: "UserID")
+}
+
+model collection_member {
+  id           Int        @id @default(autoincrement())
+  CollectionID Int
+  ResourceID   Int
+  Order        Int?
+  Annotation   String?    @db.VarChar(255)
+  collection   collection @relation(fields: [CollectionID], references: [id], onUpdate: Restrict, map: "collection_member_ibfk_1")
+  resource     resource   @relation(fields: [ResourceID], references: [id], onUpdate: Restrict, map: "collection_member_ibfk_2")
+
+  @@index([CollectionID], map: "collection_member_ibfk_1")
+  @@index([ResourceID], map: "collection_member_ibfk_2")
+}
+
+model federated_credential {
+  RowID     Int    @id @default(autoincrement())
+  UserID    Int
+  Provider  String @db.VarChar(255)
+  ProfileID String @db.VarChar(255)
+  user      user   @relation(fields: [UserID], references: [UserID], onUpdate: Restrict, map: "Federated_Credential_IBFK_1")
+
+  @@index([UserID], map: "UserID")
+}
+
+model metadata {
+  id      Int    @id @default(autoincrement())
+  Name    String @db.VarChar(255)
+  Type    String @db.VarChar(255)
+  Options Json?
+}
+
+model resource {
+  id                Int                 @id @default(autoincrement())
+  DisplayName       String?             @db.VarChar(255)
+  OriginalName      String              @db.VarChar(255)
+  MetaData          Json?
+  GroupID           Int?
+  Source            String?             @db.VarChar(255)
+  UserID            Int
+  Reviewed          Boolean?            @default(false)
+  Public            Boolean?            @default(false)
+  VisualHash        String?             @db.VarChar(255)
+  Hidden            Boolean?            @default(false)
+  resource          resource?           @relation("resourceToresource_GroupID", fields: [GroupID], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "resource_ibfk_2")
+  user              user                @relation(fields: [UserID], references: [UserID], onUpdate: Restrict, map: "resource_ibfk_1")
+  collection_member collection_member[]
+  other_resource    resource[]          @relation("resourceToresource_GroupID")
+
+  @@index([UserID], map: "UserID")
+  @@index([GroupID], map: "resource_ibfk_2")
+}
+
+model user {
+  UserID               Int                    @id @default(autoincrement())
+  Name                 String                 @db.VarChar(255)
+  Email                String                 @db.VarChar(255)
+  collection           collection[]
+  federated_credential federated_credential[]
+  resource             resource[]
+}
