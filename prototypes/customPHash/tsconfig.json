@@ -9,5 +9,7 @@
         "lib": [ "es6", "es5", "es7", "dom" ],
 		"forceConsistentCasingInFileNames": true,
 		"skipLibCheck": true,
+		"sourceMap": true,
+		"outDir": "out",
     }
 }

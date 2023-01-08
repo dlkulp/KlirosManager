@@ -1,16 +1,18 @@
+
 import apiv1 from "./v1/api";
 import express from "express";
 import bodyParser from "body-parser";
 import Passport from "passport";
 import auth from "./v1/auth";
-import path from 'path';
-import {fileURLToPath} from 'url';
+import path from "path";
+import {fileURLToPath} from "url";
 import session from "express-session";
 import Connect from "connect-sqlite3";
-import "dotenv/config";
-
+import * as dotenv from "dotenv";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+dotenv.config();
+//console.log(process.env)
 
 // This is dumb, the type file seems to be wrong....
 let SQLiteStore = (Connect as any)(session);

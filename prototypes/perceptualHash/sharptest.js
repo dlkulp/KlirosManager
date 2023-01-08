@@ -36,9 +36,18 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
     }
 };
 exports.__esModule = true;
-var Jimp = require("jimp");
+var pHash_js_1 = require("./pHash.js");
 var fs = require("fs");
 compare();
+function clearFile() {
+    try {
+        fs.writeFileSync('hashes.txt', "");
+        //file written successfully
+    }
+    catch (err) {
+        console.error(err);
+    }
+}
 function writeFile(content) {
     try {
         fs.writeFileSync('hashes.txt', content, { flag: "a+" });
@@ -48,54 +57,39 @@ function writeFile(content) {
         console.error(err);
     }
 }
+function percentDifference(a, b) {
+    return pHash_js_1.pHash.getDist(a, b) / 64;
+}
 function compare() {
     return __awaiter(this, void 0, void 0, function () {
-        var ourFather, ourFather2, ourFather3, comeWorship, dismissal, ourFatherHash, ourFather3Hash;
+        var files, ourFatherHash, _i, files_1, file, src, fileHash;
         return __generator(this, function (_a) {
             switch (_a.label) {
-                case 0: return [4 /*yield*/, Jimp.read("src/Our Father.png")];
+                case 0:
+                    clearFile();
+                    files = [{ name: "Our Father 2", dir: "src/Our Father 2.png" }, { name: "Our Father 3", dir: "src/Our Father 3.png" }, { name: "O Come Let Us Worship", dir: "src/come worship.png" }, { name: "Dismissal", dir: "src/dismissal.png" }];
+                    return [4 /*yield*/, pHash_js_1.pHash.getHash(fs.readFileSync("src/Our Father.png"))];
                 case 1:
-                    ourFather = _a.sent();
-                    return [4 /*yield*/, Jimp.read("src/Our Father 2.png")];
+                    ourFatherHash = _a.sent();
+                    _i = 0, files_1 = files;
+                    _a.label = 2;
                 case 2:
-                    ourFather2 = _a.sent();
-                    return [4 /*yield*/, Jimp.read("src/Our Father 3.png")];
+                    if (!(_i < files_1.length)) return [3 /*break*/, 5];
+                    file = files_1[_i];
+                    src = fs.readFileSync(file.dir);
+                    return [4 /*yield*/, pHash_js_1.pHash.getHash(src)];
                 case 3:
-                    ourFather3 = _a.sent();
-                    return [4 /*yield*/, Jimp.read("src/come worship.png")];
+                    fileHash = _a.sent();
+                    writeFile(fileHash);
+                    writeFile("\n");
+                    console.log("\n".concat(file.name, "\n======================="));
+                    console.log("distance    ".concat(pHash_js_1.pHash.getDist(ourFatherHash, fileHash)));
+                    console.log("percent     ".concat(Math.round(percentDifference(ourFatherHash, fileHash) * 100), "%"));
+                    _a.label = 4;
                 case 4:
-                    comeWorship = _a.sent();
-                    return [4 /*yield*/, Jimp.read("src/dismissal.png")];
-                case 5:
-                    dismissal = _a.sent();
-                    ourFatherHash = ourFather.pHash();
-                    ourFather3Hash = ourFather3.pHash();
-                    console.log(ourFatherHash);
-                    console.log("\n\n");
-                    writeFile(ourFatherHash);
-                    writeFile("\n");
-                    writeFile(ourFather3Hash);
-                    writeFile("\n");
-                    console.log("Images compared to ourFather\n=========================================");
-                    console.log("hash (base 64) ".concat(ourFather.hash(), "\n"));
-                    //console.log(`hash (binary)  ${ourFather.hash(2)}\n`);
-                    console.log("ourFather2\n=======================");
-                    //console.log(`hash (base 64) ${ourFather2.hash()}`);
-                    console.log("distance       ".concat(ourFather.distanceFromHash(ourFather2.pHash())));
-                    console.log("diff.percent   ".concat(Jimp.diff(ourFather, ourFather2).percent, "\n"));
-                    console.log("ourFather3\n=======================");
-                    //console.log(`hash (base 64) ${ourFather3.hash()}`);
-                    console.log("distance       ".concat(ourFather.distanceFromHash(ourFather3Hash)));
-                    console.log("diff.percent   ".concat(Jimp.diff(ourFather, ourFather3).percent, "\n"));
-                    console.log("comeWorship\n================");
-                    //console.log(`hash (base 64) ${comeWorship.hash()}`);
-                    console.log("distance       ".concat(Jimp.distance(ourFather, comeWorship)));
-                    console.log("diff.percent   ".concat(Jimp.diff(ourFather, comeWorship).percent, "\n"));
-                    console.log("dismissal\n================");
-                    //console.log(`hash (base 64) ${dismissal.hash()}`);
-                    console.log("distance       ".concat(Jimp.distance(ourFather, dismissal)));
-                    console.log("diff.percent   ".concat(Jimp.diff(ourFather, dismissal).percent, "\n"));
-                    return [2 /*return*/];
+                    _i++;
+                    return [3 /*break*/, 2];
+                case 5: return [2 /*return*/];
             }
         });
     });

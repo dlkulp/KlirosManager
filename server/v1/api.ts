@@ -4,6 +4,9 @@ import intoStream from "into-stream";
 import { BlobServiceClient, StorageSharedKeyCredential, newPipeline } from "@azure/storage-blob";
 import multer from "multer";
 
+import * as dotenv from "dotenv";
+dotenv.config();
+
 const inMemoryStorage = multer.memoryStorage();
 // For whatever reason the FilePond library submits the files via the "true" name
 const uploadStrategy = multer({ storage: inMemoryStorage }).single("true");

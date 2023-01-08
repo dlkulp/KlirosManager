@@ -1,0 +1,13 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "npm",
+			"script": "build",
+			"path": "prototypes/customPHash",
+			"problemMatcher": [],
+			"label": "npm: build - prototypes/customPHash",
+			"detail": "tsc --build ./tsconfig.json && copyfiles src/*.png out"
+		}
+	]
+}

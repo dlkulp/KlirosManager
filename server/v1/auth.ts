@@ -3,6 +3,9 @@ import Passport from "passport";
 import { Strategy } from "passport-google-oauth20";
 import Prisma, { user } from "@prisma/client";
 
+import * as dotenv from "dotenv";
+dotenv.config();
+
 const { PrismaClient } = Prisma;
 
 const prisma = new PrismaClient();
