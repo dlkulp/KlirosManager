@@ -1,0 +1,19 @@
+{
+    "compilerOptions": {
+		"strict": true,
+        "target": "esnext",
+        "module": "Node16",
+        "moduleResolution": "Node",
+        "allowSyntheticDefaultImports":true ,
+        "esModuleInterop": true,
+        "lib": [ "es6", "es5", "es7", "dom", "dom.iterable", "scripthost" ],
+		"forceConsistentCasingInFileNames": true,
+		"skipLibCheck": true,
+		"sourceMap": true,
+		"jsx": "preserve",
+		"importHelpers": true,
+		"experimentalDecorators": true,
+    },
+	"include": ["./**/*.ts"],
+	"exclude": ["node_modules"]
+}
