@@ -13,12 +13,12 @@ async function test() {
 			if (err) throw err;
 		});
 		let img = new ManipulateImage(fs.readFileSync(file.dir));
-		img.rotate(180).export(`out/${file.name}/rotate.png`, "png");
-		img.grayscale().export(`out/${file.name}/grayscale.png`,"png");
-		img.deskew().export(`out/${file.name}/deskew.png`,"png");
-		img.trim().export(`out/${file.name}/trim.png`,"png");
-		img.resize(128, 128).export(`out/${file.name}/resize.png`, "png");
-		img.rotate(180).grayscale().deskew(60).trim(50).resize(128, 128).export(`out/${file.name}/combined.jpg`, "jpeg");
+		img.rotate(180).export(`out/${file.name}/rotate.png`);
+		img.grayscale().export(`out/${file.name}/grayscale.png`);
+		img.deskew().export(`out/${file.name}/deskew.png`);
+		img.trim().export(`out/${file.name}/trim.png`);
+		img.resize(128, 128).export(`out/${file.name}/resize.png`);
+		img.rotate(0).grayscale().deskew(60).trim(50).resize(128, 128).export(`out/${file.name}/combined.jpeg`);
 	}
 
 	console.log("success!");

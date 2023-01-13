@@ -1,5 +1,5 @@
 import { ColorSpace, initializeImageMagick } from "@imagemagick/magick-wasm";
-import { ImageMagick, MagickFormat, IMagickImage, Percentage } from "@imagemagick/magick-wasm";
+import { ImageMagick, MagickFormat, IMagickImage, Percentage, MagickGeometry } from "@imagemagick/magick-wasm";
 import * as fs from "fs";
 
 export class ManipulateImage {
@@ -30,7 +30,7 @@ export class ManipulateImage {
 
 	// Resize
 	private _resize(image: IMagickImage, height: number, width: number) {
-		image.resize(width, height);
+		image.resize(new MagickGeometry(`${width}x${height}!`));
 	}
 	public resize(height: number, width: number) {
 		this.stack.push((image: IMagickImage) => this._resize(image, height, width));
@@ -65,7 +65,8 @@ export class ManipulateImage {
 	}
 
 	// Write
-	public export(name: string = "testImage", _format:string = "Jpeg") {
+	public export(name: string = "image.jpeg") {
+		let _format = name.split(".").at(-1) || "jpeg";
 		let format = _format.replace(/^\w/, c => c.toUpperCase());
 		if (typeof MagickFormat[format as keyof typeof MagickFormat] == "undefined")
 			console.error("Unknown filetype.");
@@ -87,7 +88,18 @@ export class ManipulateImage {
 			ImageMagick.read(this.imgArr, image => {
 				for (let command of this.stack)
 					command(image);
-				image.write((content: Uint8Array) => resolve(content));
+				
+				// Bmp is an uncompressed, quad-channel format, for this usage we need one value only so we convert to a single channel
+				// More here: https://www.imagemagick.org/Usage/color_mods/
+				function convert(content: Uint8Array) {
+					let px = image.height * image.width;
+					let out = new Uint8Array(px);
+					for (let x = 0, r = 0, g = 1, b = 2, a = 3; x < px; x++, r+=4, g+=4, b+=4, a+=4)
+						out[x] = (content[r]*.2)+(content[g]*.5)+(content[b]*.3);
+					return out;
+				}
+				
+				image.write((content: Uint8Array) => resolve(convert(content)), MagickFormat.Bmp);
 			})
 		});
 		this.stack = [];

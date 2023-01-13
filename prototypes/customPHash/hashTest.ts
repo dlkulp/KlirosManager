@@ -27,7 +27,15 @@ async function compare()
 {
 	const hashMethod = "fast";
 	clearFile()
-	let files = [{name:"Our Father 2", dir:"../src/Our Father 2.png"},{name:"Our Father 3", dir:"../src/Our Father 3.png"},{name:"O Come Let Us Worship", dir:"../src/come worship.png"},{name:"Dismissal", dir:"../src/dismissal.png"}];
+	let files = [
+		{name:"Our Father 2", dir:"../src/Our Father 2.png"},
+		{name:"Our Father 3", dir:"../src/Our Father 3.png"},
+		{name:"O Come Let Us Worship", dir:"../src/come worship.png"},
+		{name:"Dismissal", dir:"../src/dismissal.png"},
+		{name:"White", dir:"../src/white.png"},
+		{name:"Kohaku", dir:"../src/Kohaku.jpg"},
+		{name:"multi", dir:"../src/multi.png"}
+	];
 	
 	let ourFatherHash = await pHash(fs.readFileSync("../src/Our Father.png"), hashMethod);
 	//console.log(ourFatherHash);

@@ -1,7 +1,7 @@
-import sharp from "sharp";
+import { ManipulateImage } from "../../imageMagick/imageMagick.js";
 import {fastDctLee} from "./FastDCT.js";
 
-const SAMPLE_SIZE = 64;
+const SAMPLE_SIZE = 128;
 const LOW_SIZE = 8;
 
 export function distance(a: string, b: string) {
@@ -15,16 +15,16 @@ export function distance(a: string, b: string) {
   };
 
 export async function pHash(image: Buffer, method = "fast") {
-	const data = await sharp(image)
-	  .greyscale()
-	  .resize(SAMPLE_SIZE, SAMPLE_SIZE, { fit: "fill" })
-	  .flop()
-	  .rotate(-90)
-	  .raw()
-	  .toBuffer();
-	  
+	await ManipulateImage.init();
+	const img = new ManipulateImage(image)
+	  .grayscale()
+	  .deskew(60)
+	  .trim(50)
+	  .resize(SAMPLE_SIZE, SAMPLE_SIZE);
+	const data = await img.toUint8Array();
+
 	let s: number[][] = convertToMatrix(data);
-	  
+	
 	//exportImage("preDCT.png", s);
 	
 	// Apply 2D Fast DCT type II, unscaled - O(n log n)
@@ -56,22 +56,20 @@ export async function pHash(image: Buffer, method = "fast") {
 	return fingerprint;
 }
 
-async function exportImage(fileName: string, arr2d: any[] | Buffer) {
-	let uArr: Uint16Array | Buffer | undefined = undefined;
-	if (typeof (arr2d as Buffer).buffer === "undefined") {
-		let arr = [];
-		for (let row of arr2d)
-			for (let x of row)
-			arr.push(x);
-		uArr = Uint16Array.from(arr);
-	}
-	else  uArr = arr2d as Buffer;
-	await sharp(uArr, {raw: {
-		width: SAMPLE_SIZE,
-		height: SAMPLE_SIZE,
-		channels: 1
-	  }}).png().toFile(fileName);
-}
+// async function exportImage(fileName: string, arr2d: number[][]) {
+// 	let uArr: Uint8Array;
+// 	let arr = [];
+// 	for (let row of arr2d)
+// 		for (let x of row)
+// 			arr.push(x);
+// 	uArr = Uint8Array.from(arr);
+
+// 	await sharp(uArr, {raw: {
+// 		width: SAMPLE_SIZE,
+// 		height: SAMPLE_SIZE,
+// 		channels: 1
+// 	  }}).png().toFile(fileName);
+// }
 
 function applyFastDCT(matrix: Array<Array<number>>) {
 	// First dimension
@@ -87,8 +85,8 @@ function applyFastDCT(matrix: Array<Array<number>>) {
 	matrix = rotateMatrix(matrix);
 }
 
-function convertToMatrix(data: Buffer) {
-	// convert buffer to 2D array
+function convertToMatrix(data: Uint8Array) {
+	// convert typed array to 2D array
 	let s: Array<Array<number>> = new Array(SAMPLE_SIZE);
 	for (let x = 0; x < SAMPLE_SIZE; x++) {
 		s[x] = new Array(SAMPLE_SIZE);

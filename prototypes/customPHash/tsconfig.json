@@ -2,14 +2,19 @@
     "compilerOptions": {
 		"strict": true,
         "target": "esnext",
-        "module": "esnext",
+        "module": "Node16",
         "moduleResolution": "Node",
         "allowSyntheticDefaultImports":true ,
         "esModuleInterop": true,
-        "lib": [ "es6", "es5", "es7", "dom" ],
+        "lib": [ "es6", "es5", "es7", "dom", "dom.iterable", "scripthost" ],
 		"forceConsistentCasingInFileNames": true,
 		"skipLibCheck": true,
 		"sourceMap": true,
-		"outDir": "out",
-    }
+		"jsx": "preserve",
+		"importHelpers": true,
+		"experimentalDecorators": true,
+		"outDir": "out"
+    },
+	"include": ["./**/*.ts"],
+	"exclude": ["node_modules"]
 }
