@@ -4,5 +4,5 @@
 **\.db
 **\.pem
 **\out
-**\*.js
-**\*.js.map
+**/*.js
+**/*.js.map
