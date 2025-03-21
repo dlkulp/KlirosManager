@@ -1,5 +1,6 @@
 **\node_modules
 **\dist
+**\appsettings.Development.json
 **\.env
 **\.db
 **\.pem

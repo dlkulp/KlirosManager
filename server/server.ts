@@ -6,14 +6,14 @@ import auth from "./v1/auth";
 import path from 'path';
 import {fileURLToPath} from 'url';
 import session from "express-session";
-import Connect from "connect-sqlite3";
+//import Connect from "connect-sqlite3";
 import "dotenv/config";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // This is dumb, the type file seems to be wrong....
-let SQLiteStore = (Connect as any)(session);
+//let SQLiteStore = (Connect as any)(session);
 
 const app = express();
 
@@ -21,7 +21,7 @@ app.use(session({
 	secret: process.env["SESSION_SECRET"] as string,
 	resave: false,
 	saveUninitialized: false,
-	store: new SQLiteStore({ db: "sessions.db", dir: path.resolve(__dirname, "db")})
+	//store: new SQLiteStore({ db: "sessions.db", dir: path.resolve(__dirname, "db")})
 }));
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());

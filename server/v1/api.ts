@@ -1,7 +1,7 @@
 import { Router } from "express";
 import Prisma from "@prisma/client";
 import intoStream from "into-stream";
-import { BlobServiceClient, StorageSharedKeyCredential, newPipeline } from "@azure/storage-blob";
+//import { BlobServiceClient, StorageSharedKeyCredential, newPipeline } from "@azure/storage-blob";
 import multer from "multer";
 
 const inMemoryStorage = multer.memoryStorage();
@@ -11,15 +11,15 @@ const uploadStrategy = multer({ storage: inMemoryStorage }).single("true");
 const { PrismaClient } = Prisma;
 const prisma = new PrismaClient();
 
-const sharedKeyCredential = new StorageSharedKeyCredential(
-	process.env.AZURE_STORAGE_NAME as string,
-	process.env.AZURE_STORAGE_KEY as string);
-const pipeline = newPipeline(sharedKeyCredential);
+// const sharedKeyCredential = new StorageSharedKeyCredential(
+// 	process.env.AZURE_STORAGE_NAME as string,
+// 	process.env.AZURE_STORAGE_KEY as string);
+// const pipeline = newPipeline(sharedKeyCredential);
   
-const blobServiceClient = new BlobServiceClient(
-	`https://${process.env.AZURE_STORAGE_NAME}.blob.core.windows.net`,
-	pipeline
-);
+// const blobServiceClient = new BlobServiceClient(
+// 	`https://${process.env.AZURE_STORAGE_NAME}.blob.core.windows.net`,
+// 	pipeline
+// );
 
 const ONE_MEGABYTE = 1024 * 1024;
 const uploadOptions = { bufferSize: 4 * ONE_MEGABYTE, maxBuffers: 20 };
@@ -58,17 +58,17 @@ apiv1.post("/upload", isLoggedIn, uploadStrategy, async (req: any,res) => {
 	});
 	const blobName = `${resource.id}-${req.file.originalname}`;
 	const stream = intoStream(req.file.buffer);
-	const containerClient = blobServiceClient.getContainerClient(containerNameScores);
-	const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+	//const containerClient = blobServiceClient.getContainerClient(containerNameScores);
+	//const blockBlobClient = containerClient.getBlockBlobClient(blobName);
 
-	try {
-		await blockBlobClient.uploadStream(stream,
-			uploadOptions.bufferSize, uploadOptions.maxBuffers,
-			{ blobHTTPHeaders: { blobContentType: req.file.mimeType } });
-		res.status(201).send({ message: "File successfully uploaded" });
-	} catch (err: any) {
-		res.status(500).send({ message: err.message });
-	}
+	// try {
+	// 	await blockBlobClient.uploadStream(stream,
+	// 		uploadOptions.bufferSize, uploadOptions.maxBuffers,
+	// 		{ blobHTTPHeaders: { blobContentType: req.file.mimeType } });
+	// 	res.status(201).send({ message: "File successfully uploaded" });
+	// } catch (err: any) {
+	// 	res.status(500).send({ message: err.message });
+	// }
 });
 
 apiv1.post("/scores/review", isLoggedIn, async (req: any, res) => {
@@ -98,10 +98,10 @@ apiv1.delete("/scores/:id", isLoggedIn, async (req:any, res) => {
 	if (score) {
 		try {
 			const blobName = `${score.id}-${score.OriginalName}`;
-			const containerClient = await blobServiceClient.getContainerClient(containerNameScores);
-			const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-			const blobDeleteResponse = blockBlobClient.delete();
-			console.log((await blobDeleteResponse).clientRequestId);
+			//const containerClient = await blobServiceClient.getContainerClient(containerNameScores);
+			//const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+			//const blobDeleteResponse = blockBlobClient.delete();
+			//sxconsole.log((await blobDeleteResponse).clientRequestId);
 			await prisma.resource.delete({
 				where: {
 					id: score.id

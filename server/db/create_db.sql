@@ -26,7 +26,7 @@ CREATE TABLE `kliros_manager`.`resource` (
 	`UserID` int NOT NULL, 
 	`Reviewed` boolean DEFAULT false, 
 	`Public` boolean DEFAULT false, 
-	`VisualHash` varchar(255), 
+	`PerceptualHash` varchar(255), 
 	`Hidden` boolean DEFAULT false,
 	PRIMARY KEY (`id`),
 	KEY `UserID` (`UserID`),
@@ -79,5 +79,5 @@ CREATE TABLE `kliros_manager`.`collection_member` (
 	CONSTRAINT `collection_member_ibfk_2` FOREIGN KEY (`ResourceID`) REFERENCES `resource` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
-select * from kliros_manager.resource
-delete from kliros_manager.resource
+-- select * from kliros_manager.resource
+-- delete from kliros_manager.resource
