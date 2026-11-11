@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Kliros Manager | Music Library</title>
+  <link rel="stylesheet" href="/static/pico.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/site.js" defer></script>
+  <script src="/static/home.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/" aria-label="Kliros Manager home">
+        <span class="brand-mark" aria-hidden="true">K</span>
+        <span>Kliros Manager</span>
+      </a>
+      <nav class="site-nav" aria-label="Main navigation"><a href="/library">Library</a><a href="/search">Search</a><a href="/import">Import score</a><a href="/profile">Profile</a></nav>
+      <div class="topbar-actions"><span class="local-label"><span class="local-dot" aria-hidden="true"></span>Local library</span><div id="account-controls" class="account-controls"></div></div>
+    </div>
+  </header>
+
+  <main class="page-shell">
+    <section class="recent-section" aria-labelledby="recent-heading">
+      <div class="section-heading recent-heading">
+        <div>
+          <p class="eyebrow">Kliros Manager</p>
+          <h1 id="recent-heading">Recent additions</h1>
+        </div>
+        <div class="home-actions">
+          <a class="text-link" href="/library">Browse full library <span aria-hidden="true">&rarr;</span></a>
+          <a class="primary-link" href="/import">Import score</a>
+        </div>
+      </div>
+      <div id="recent-works" class="work-grid recent-grid"></div>
+      <p id="home-empty-state" class="empty-state" hidden>Your library is empty. <a href="/import">Import your first score.</a></p>
+    </section>
+    <p class="home-note">A quiet place for scores that belong in the service.</p>
+  </main>
+</body>
+</html>

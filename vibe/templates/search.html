@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Search scores | Kliros Manager</title>
+  <link rel="stylesheet" href="/static/pico.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/site.js" defer></script>
+  <script src="/static/search.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/" aria-label="Kliros Manager home"><span class="brand-mark" aria-hidden="true">K</span><span>Kliros Manager</span></a>
+      <nav class="site-nav" aria-label="Main navigation"><a href="/">Home</a><a href="/library">Library</a><a href="/search" aria-current="page">Search</a><a href="/import">Import score</a><a href="/profile">Profile</a></nav>
+      <div class="topbar-actions"><span class="local-label"><span class="local-dot" aria-hidden="true"></span>Local library</span><div id="account-controls" class="account-controls"></div></div>
+    </div>
+  </header>
+  <main class="page-shell search-shell">
+    <p class="eyebrow">Find a score</p>
+    <h1>Search library</h1>
+    <div class="search-layout">
+      <aside class="search-sidebar" aria-label="Search and metadata filters">
+        <label class="search-query-label" for="search-query">Search title and metadata</label>
+        <input id="search-query" type="search" placeholder="Title, composer, service..." autocomplete="off">
+        <div class="filter-heading"><h2>Metadata</h2><button id="clear-search-filters" class="filter-clear" type="button">Clear</button></div>
+        <div id="metadata-filters" class="metadata-filters"></div>
+      </aside>
+      <section class="search-results-panel" aria-label="Search results">
+        <div id="search-results-heading" class="search-toolbar">
+          <p id="search-count" role="status" aria-live="polite"></p>
+          <div class="search-toolbar-controls">
+            <label for="page-size">Per page
+              <select id="page-size">
+                <option value="24" selected>24</option>
+                <option value="48">48</option>
+                <option value="96">96</option>
+              </select>
+            </label>
+            <label for="sort-order">Sort by
+              <select id="sort-order">
+                <option value="uploaded">Upload date</option>
+                <option value="popularity">Popularity</option>
+                <option value="name">Name</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <p class="popularity-note">Popularity uses favorites until download counts are available.</p>
+        <div id="search-results" class="search-result-grid"></div>
+        <nav id="search-pagination" class="search-pagination" aria-label="Search result pages"></nav>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

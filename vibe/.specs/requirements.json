@@ -1,0 +1,209 @@
+{
+  "projectName": "Kliros Manager Vibe",
+  "description": "A locally run sheet-music upload and analysis web app with a Flask API and HTML frontend. Containerization is a later phase and is out of scope for the initial implementation.",
+  "mode": "new",
+  "services": [
+    {
+      "id": "backend",
+      "name": "Flask backend",
+      "type": "backend",
+      "language": "Python",
+      "framework": "Flask",
+      "features": [
+        "Expose an Import Score wizard. Its preflight checks SHA-256 first, then exact visual hash, without persistent storage for duplicates. For unique files, assign a GUID and create the resource before metadata review.",
+        "Generate a 128x128 PNG thumbnail named from the GUID upload basename, serve the latest three uploads on the home page, and provide a full /library listing with links to detail pages containing the original document and metadata.",
+        "Require the local demo user to delete a resource; the detail page confirms deletion before removing its local original/thumbnail files and redirecting home.",
+        "Require the local demo user to open the Import Score page and submit score uploads.",
+        "Add a fake hard-coded local user login/logout for the PoC, with JoinedAt profile information. Associate favorites and collection ownership with the user; public visibility and subscription behavior are deferred.",
+        "Show an uploader profile with uploaded-work count and join date on details; support favorite toggling and adding the work to an existing or new owned collection with null order/annotation.",
+        "service/UploadService stores each score under uploads/ with a GUID-based filename and passes that filename to FileProcessing.",
+        "Calculate a SHA-256 file hash before OCR or pHash; reject exact duplicates with HTTP 409, remove the newly saved file, and do not insert a resource row. Persist FileHash in accepted resource rows.",
+        "Run OCR and compare perceptual hashes using pHash and Hamming distance; the import duplicate gate compares exact visual-hash equality before OCR. Infer metadata by keyword matching OCR text against metadata field options.",
+        "Use a DataManager abstraction backed by db.json with serialized table definitions and rows modeled on server/db/create_db.sql, including the favorites table linking users and resources with the favorited date.",
+        "Insert every processed upload into the resource table with its VisualHash and local file location; compare new hashes against previously stored resource hashes so each upload is available for future matching.",
+        "Set resource OriginalName to the exact uploaded filename. Set DisplayName to the first non-empty OCR text line, falling back to the original filename without its extension.",
+        "Use a SettingsManager to load and provide configurable settings, initially the local upload storage folder and maximum pHash Hamming distance accepted as a possible match; structure it to support future settings.",
+        "Expose a reusable resource metadata update endpoint used by the import wizard and future editing pages. Return JSON for duplicate and resource creation outcomes.",
+        "Show raw OCR text, SHA-256, and visual hash in an expandable Debug panel on the import page.",
+        "After metadata review, rank reasonable matches using pHash, title, and composer; ask the user to confirm same/different without merging or changing resources. If there are no reasonable matches, state that import is complete."
+      ]
+    },
+    {
+      "id": "frontend",
+      "name": "HTML frontend",
+      "type": "frontend",
+      "language": "JavaScript",
+      "framework": "Plain HTML, CSS, and vanilla JavaScript served by Flask",
+      "features": [
+        "Provide a home page with the latest three uploads and a link to the Import Score wizard.",
+        "Show the latest three uploads above the home-page upload form, each with a thumbnail and title linking to its detail page; provide a link to the full library.",
+        "Provide a full library page and detail pages with the full-size image or embedded PDF and additional metadata; show a confirmed delete action only to the logged-in demo user.",
+        "Allow any visitor to download the original document from its detail page using a title-based filename, appending composer when present and preserving the original extension; defer download counting.",
+        "Display the returned upload, OCR, duplicate-match, and inferred-metadata results.",
+        "Display ranked possible matches after metadata save, provide same/different confirmation without a merge step, and state import complete if there are no reasonable candidates.",
+        "Provide a signed-in profile page with the user's name, join date, uploads, and owned collections; support owner-scoped collection rename/delete and item removal regardless of Public visibility."
+      ]
+    }
+  ],
+  "dataStores": ["Local filesystem (uploads/ and db.json)"],
+  "deploymentScope": {
+    "initial": "Run locally as a Python Flask application using local file storage; do not require Azure services or a remote database.",
+    "future": "Containerize the application in a later phase; do not add container configuration now."
+  },
+  "settingsManager": {
+    "initialSettings": [
+      {
+        "name": "storage_folder",
+        "description": "Local folder where GUID-named uploaded score files are saved."
+      },
+      {
+        "name": "max_hamming_distance",
+        "description": "Maximum pHash Hamming distance for considering an existing score a possible match."
+      }
+    ],
+    "extensible": true,
+    "persistence": "Local settings file with sensible defaults; no cloud configuration."
+  },
+  "auth": "Hard-coded local demo user only; no real authentication or external identity provider.",
+  "questions": [
+    {
+      "header": "Backend language",
+      "question": "Which language should power the backend service?",
+      "serviceId": "backend",
+      "multiSelect": false,
+      "recommendedChoice": "Python",
+      "answer": "Python",
+      "options": [
+        { "label": "Python", "description": "Required for the requested Flask application." },
+        { "label": "TypeScript", "description": "Node.js backend." },
+        { "label": "C# (.NET)", "description": "ASP.NET Core backend." }
+      ],
+      "allowFreeformInput": false,
+      "status": "inferred",
+      "rationale": "The request explicitly specifies a Python Flask web app."
+    },
+    {
+      "header": "Backend framework",
+      "question": "Which framework should the backend use?",
+      "serviceId": "backend",
+      "multiSelect": false,
+      "recommendedChoice": "Flask",
+      "answer": "Flask",
+      "options": [
+        { "label": "Flask", "description": "The requested lightweight Python web framework." },
+        { "label": "FastAPI", "description": "Python API framework with generated OpenAPI support." },
+        { "label": "Django", "description": "Full-featured Python web framework." }
+      ],
+      "allowFreeformInput": true,
+      "status": "inferred",
+      "rationale": "The request explicitly specifies Flask."
+    },
+    {
+      "header": "Backend features",
+      "question": "What backend behavior should be included?",
+      "serviceId": "backend",
+      "multiSelect": false,
+      "recommendedChoice": "Upload endpoint, GUID file handling, OCR, pHash duplicate matching, metadata inference, and JSON response using db.json-backed DataManager.",
+      "answer": "Upload endpoint, GUID file handling, OCR, pHash duplicate matching, metadata inference, and JSON response using db.json-backed DataManager.",
+      "status": "inferred",
+      "rationale": "These behaviors are specified in the request."
+    },
+    {
+      "header": "Frontend language",
+      "question": "Which language should the frontend use?",
+      "serviceId": "frontend",
+      "multiSelect": false,
+      "recommendedChoice": "JavaScript",
+      "answer": "JavaScript",
+      "options": [
+        { "label": "JavaScript", "description": "Vanilla browser scripting for the HTML upload flow and results display." },
+        { "label": "TypeScript", "description": "Typed browser scripting, requiring a build step." }
+      ],
+      "allowFreeformInput": false,
+      "status": "inferred",
+      "rationale": "A small HTML frontend can submit the upload and render the JSON response with vanilla JavaScript."
+    },
+    {
+      "header": "Frontend framework",
+      "question": "Which frontend framework or approach should be used?",
+      "serviceId": "frontend",
+      "multiSelect": false,
+      "recommendedChoice": "Plain HTML, CSS, and vanilla JavaScript served by Flask",
+      "answer": "Plain HTML, CSS, and vanilla JavaScript served by Flask",
+      "options": [
+        { "label": "Plain HTML/CSS/JavaScript", "description": "No frontend framework or build pipeline." },
+        { "label": "Vue", "description": "Component-based frontend application." },
+        { "label": "React", "description": "Component-based frontend application." }
+      ],
+      "allowFreeformInput": true,
+      "status": "inferred",
+      "rationale": "The request asks for an HTML frontend served with the Flask app."
+    },
+    {
+      "header": "Frontend features",
+      "question": "What frontend behavior should be included?",
+      "serviceId": "frontend",
+      "multiSelect": false,
+      "recommendedChoice": "A home page upload control posting to /library/submit and a results view for the JSON response.",
+      "answer": "A home page upload control posting to /library/submit and a results view for the JSON response.",
+      "status": "inferred",
+      "rationale": "These behaviors are specified in the request."
+    },
+    {
+      "header": "Data stores",
+      "question": "Which data stores should the project plan include?",
+      "multiSelect": true,
+      "recommendedChoice": ["Local filesystem (uploads/ and db.json)"],
+      "answer": ["Local filesystem (uploads/ and db.json)"],
+      "options": [
+        { "label": "Local filesystem (uploads/ and db.json)", "description": "Local uploaded-file storage and JSON-backed table data for this phase." },
+        { "label": "Blob Storage", "description": "Cloud file storage; not needed for this locally run phase." },
+        { "label": "PostgreSQL", "description": "Managed relational database." },
+        { "label": "MySQL", "description": "Managed relational database." },
+        { "label": "Cosmos DB", "description": "Managed NoSQL database." },
+        { "label": "No datastore required", "description": "No persistent data or uploaded-file storage is needed.", "exclusive": true }
+      ],
+      "allowFreeformInput": false,
+      "status": "inferred",
+      "rationale": "The user specified local file storage and db.json, with no Azure dependency. Containerization is deferred to a future phase."
+    },
+    {
+      "header": "Authentication",
+      "question": "What account behavior should the local PoC provide?",
+      "multiSelect": false,
+      "recommendedChoice": "Demo-only hard-coded local user",
+      "answer": "Demo-only hard-coded local user",
+      "options": [
+        { "label": "No sign-in", "description": "No session user is tracked." },
+        { "label": "Demo-only hard-coded local user", "description": "Instant login/logout for testing user-owned favorites and collections; not real authentication." },
+        { "label": "Real authentication", "description": "External identity or account management." }
+      ],
+      "allowFreeformInput": false,
+      "status": "inferred",
+      "rationale": "The user requested instant login/logout with a fake hard-coded user for the local PoC."
+    }
+  ],
+  "metadataFields": [
+    "Composer",
+    "Style",
+    "Tone",
+    "Tone Set",
+    "Feast",
+    "Feast Rank",
+    "Part of Service",
+    "Parts",
+    "Chorus Type",
+    "Difficulty",
+    "Liturgical Date",
+    "Calendar Date",
+    "Language",
+    "Original Title"
+  ],
+  "localPrerequisites": [
+    "Python 3.x and a virtual environment",
+    "pip-installable Flask, OCR, PDF-rendering, and image-hashing packages",
+    "Tesseract OCR executable installed separately and available on PATH",
+    "Poppler utilities or an equivalent PDF renderer installed separately if the selected PDF-to-image library requires them",
+    "Writable local uploads/, settings, and db.json paths"
+  ]
+}

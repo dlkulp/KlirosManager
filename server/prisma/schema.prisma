@@ -24,8 +24,8 @@ model collection_member {
   ResourceID   Int
   Order        Int?
   Annotation   String?    @db.VarChar(255)
-  collection   collection @relation(fields: [CollectionID], references: [id], onUpdate: Restrict, map: "collection_member_ibfk_1")
-  resource     resource   @relation(fields: [ResourceID], references: [id], onUpdate: Restrict, map: "collection_member_ibfk_2")
+  collection   collection @relation(fields: [CollectionID], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "collection_member_ibfk_1")
+  resource     resource   @relation(fields: [ResourceID], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "collection_member_ibfk_2")
 
   @@index([CollectionID], map: "collection_member_ibfk_1")
   @@index([ResourceID], map: "collection_member_ibfk_2")
@@ -36,16 +36,30 @@ model federated_credential {
   UserID    Int
   Provider  String @db.VarChar(255)
   ProfileID String @db.VarChar(255)
-  user      user   @relation(fields: [UserID], references: [UserID], onUpdate: Restrict, map: "Federated_Credential_IBFK_1")
+  user      user   @relation(fields: [UserID], references: [UserID], onDelete: Restrict, onUpdate: Restrict, map: "Federated_Credential_IBFK_1")
 
   @@index([UserID], map: "UserID")
 }
 
+model favorites {
+  UserID      Int
+  ResourceID  Int
+  FavoritedAt DateTime @default(now()) @db.DateTime(0)
+  user        user     @relation(fields: [UserID], references: [UserID], onDelete: Restrict, onUpdate: Restrict, map: "favorites_ibfk_1")
+  resource    resource @relation(fields: [ResourceID], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "favorites_ibfk_2")
+
+  @@id([UserID, ResourceID])
+  @@index([ResourceID], map: "ResourceID")
+}
+
 model metadata {
-  id      Int    @id @default(autoincrement())
-  Name    String @db.VarChar(255)
-  Type    String @db.VarChar(255)
-  Options Json?
+  id        Int     @id @default(autoincrement())
+  Name      String  @db.VarChar(255)
+  Type      String  @db.VarChar(255)
+  Options   Json?
+  Core      Boolean @default(false)
+  Extracted Boolean @default(false)
+  Required  Boolean @default(false)
 }
 
 model resource {
@@ -59,11 +73,13 @@ model resource {
   Reviewed          Boolean?            @default(false)
   Public            Boolean?            @default(false)
   VisualHash        String?             @db.VarChar(255)
+  FileHash          String?             @db.VarChar(64)
   Hidden            Boolean?            @default(false)
   resource          resource?           @relation("resourceToresource_GroupID", fields: [GroupID], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "resource_ibfk_2")
-  user              user                @relation(fields: [UserID], references: [UserID], onUpdate: Restrict, map: "resource_ibfk_1")
+  user              user                @relation(fields: [UserID], references: [UserID], onDelete: Restrict, onUpdate: Restrict, map: "resource_ibfk_1")
   collection_member collection_member[]
   other_resource    resource[]          @relation("resourceToresource_GroupID")
+  favorites         favorites[]
 
   @@index([UserID], map: "UserID")
   @@index([GroupID], map: "resource_ibfk_2")
@@ -73,7 +89,9 @@ model user {
   UserID               Int                    @id @default(autoincrement())
   Name                 String                 @db.VarChar(255)
   Email                String                 @db.VarChar(255)
+  JoinedAt             DateTime               @default(now()) @db.DateTime(0)
   collection           collection[]
   federated_credential federated_credential[]
+  favorites             favorites[]
   resource             resource[]
 }

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Score details | Kliros Manager</title>
+  <link rel="stylesheet" href="/static/pico.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/site.js" defer></script>
+  <script src="/static/detail.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/" aria-label="Kliros Manager home"><span class="brand-mark" aria-hidden="true">K</span><span>Kliros Manager</span></a>
+      <nav class="site-nav" aria-label="Main navigation"><a href="/">Home</a><a href="/library">Library</a><a href="/search">Search</a><a href="/import">Import score</a><a href="/profile">Profile</a></nav>
+      <div class="topbar-actions"><span class="local-label"><span class="local-dot" aria-hidden="true"></span>Local library</span><div id="account-controls" class="account-controls"></div></div>
+    </div>
+  </header>
+  <main class="page-shell detail-shell">
+    <a class="back-link" href="/library">&larr; Library</a>
+    <p class="eyebrow">Score details</p>
+    <p id="detail-load-status" class="request-error" role="alert" hidden></p>
+    <h1 id="detail-title" class="detail-title"></h1>
+    <p id="detail-original" class="detail-original"></p>
+    <div class="score-actions">
+      <a id="download-original" class="download-button" href="#" download>Download original</a>
+      <button id="favorite-button" class="favorite-button" type="button" aria-pressed="false" aria-label="Add to favorites">☆</button>
+      <button id="open-collection-dialog" class="collection-button" type="button" aria-haspopup="dialog">Add to Collection</button>
+      <p id="detail-action-status" class="action-status" role="status" aria-live="polite"></p>
+    </div>
+    <div class="detail-layout">
+      <aside class="detail-sidebar" aria-label="Uploader and metadata">
+        <section class="uploader-profile" aria-label="Uploader profile">
+          <div id="uploader-initials" class="profile-avatar" aria-hidden="true"></div>
+          <p class="eyebrow">Uploaded by</p>
+          <strong id="uploader-name"></strong>
+          <span id="uploader-count"></span>
+          <time id="uploader-joined"></time>
+        </section>
+        <section class="metadata-sidebar" aria-labelledby="metadata-summary-heading">
+          <h2 id="metadata-summary-heading">Metadata at a glance</h2>
+          <dl id="metadata-summary" class="metadata-stack"></dl>
+          <p id="metadata-summary-empty" class="muted-copy" hidden>No metadata values yet.</p>
+        </section>
+      </aside>
+      <section id="original-score" class="document-viewer" aria-label="Original score"></section>
+    </div>
+    <section class="detail-metadata" aria-labelledby="metadata-heading">
+      <div class="detail-metadata-heading">
+        <h2 id="metadata-heading">Metadata</h2>
+        <button id="edit-metadata-button" class="secondary outline" type="button" aria-controls="metadata-edit-form" hidden>Edit</button>
+      </div>
+      <div id="metadata-read-mode">
+        <dl id="metadata-grid" class="metadata-grid"></dl>
+        <p id="metadata-empty" class="empty-state" hidden>No metadata has been identified yet.</p>
+      </div>
+      <form id="metadata-edit-form" class="metadata-edit-form" hidden>
+        <label for="detail-work-title">Title</label>
+        <input id="detail-work-title" name="DisplayName" maxlength="255" required>
+        <div id="detail-primary-metadata" class="metadata-inputs"></div>
+        <details class="additional-fields">
+          <summary>Additional fields</summary>
+          <div id="detail-additional-metadata" class="metadata-inputs"></div>
+        </details>
+        <p id="metadata-edit-error" class="request-error" role="alert" hidden></p>
+        <div class="form-footer">
+          <p id="metadata-edit-status" class="selected-file" role="status" aria-live="polite"></p>
+          <button id="save-metadata-button" type="submit">Save changes</button>
+          <button id="cancel-metadata-button" class="secondary outline" type="button">Cancel</button>
+        </div>
+      </form>
+    </section>
+    <details id="recognized-details" class="ocr-details" hidden>
+      <summary>Recognized text</summary>
+      <pre id="recognized-text" class="ocr-text"></pre>
+    </details>
+    <form id="delete-resource-form" class="delete-form" hidden>
+      <button class="delete-button" type="submit">Delete this work</button>
+    </form>
+    <div class="detail-report-action">
+      <button id="open-report-dialog" class="report-button secondary outline" type="button">Report to Moderator</button>
+    </div>
+    <dialog id="collection-dialog" class="collection-dialog" aria-labelledby="collection-dialog-title">
+      <div class="dialog-heading">
+        <h2 id="collection-dialog-title">Save to...</h2>
+        <button id="close-collection-dialog" class="dialog-close" type="button" aria-label="Close dialog">×</button>
+      </div>
+      <p id="collection-login-prompt" class="muted-copy" hidden>Log in with the demo user to manage collections.</p>
+      <p id="collection-status" class="collection-status" role="status" aria-live="polite">Choose collections to save this score to.</p>
+      <div id="collection-choices" class="collection-choices"></div>
+      <details id="new-collection-details" class="new-collection-details">
+        <summary><span aria-hidden="true">+</span> New collection</summary>
+        <form id="new-collection-form" class="new-collection-form">
+          <label for="new-collection-name">Collection name</label>
+          <input id="new-collection-name" name="name" maxlength="255" placeholder="Collection name" required>
+          <button type="submit">Create and save</button>
+        </form>
+      </details>
+    </dialog>
+    <dialog id="report-dialog" class="report-dialog collection-dialog" aria-labelledby="report-dialog-title">
+      <div class="dialog-heading">
+        <h2 id="report-dialog-title">Report to Moderator</h2>
+        <button id="close-report-dialog" class="dialog-close" type="button" aria-label="Close dialog">×</button>
+      </div>
+      <form id="report-form">
+        <label for="report-reason">Reason</label>
+        <select id="report-reason" name="reason" required>
+          <option value="">Choose a reason</option>
+          <option>Not sheet music</option>
+          <option>Questionable</option>
+          <option>Copyright</option>
+        </select>
+        <label for="report-details">Additional details</label>
+        <textarea id="report-details" name="details" rows="4" maxlength="2000" placeholder="Add context for the moderator"></textarea>
+        <div class="report-form-actions">
+          <button id="cancel-report" class="secondary outline" type="button">Cancel</button>
+          <button type="submit">Send report</button>
+        </div>
+      </form>
+      <p id="report-thanks" class="report-thanks" role="status" aria-live="polite" hidden>Thank you for letting us know. Reports are not sent or stored yet.</p>
+    </dialog>
+  </main>
+</body>
+</html>

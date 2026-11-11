@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Import score | Kliros Manager</title>
+  <link rel="stylesheet" href="/static/pico.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/site.js" defer></script>
+  <script src="/static/import.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/" aria-label="Kliros Manager home"><span class="brand-mark" aria-hidden="true">K</span><span>Kliros Manager</span></a>
+      <nav class="site-nav" aria-label="Main navigation"><a href="/">Home</a><a href="/library">Library</a><a href="/search">Search</a><a href="/import" aria-current="page">Import score</a><a href="/profile">Profile</a></nav>
+      <div class="topbar-actions"><span class="local-label"><span class="local-dot" aria-hidden="true"></span>Local library</span><div id="account-controls" class="account-controls"></div></div>
+    </div>
+  </header>
+  <main class="page-shell import-shell">
+    <a class="back-link" href="/library">&larr; Library</a>
+    <p class="eyebrow">Add to the collection</p>
+    <h1>Import score</h1>
+    <ol class="wizard-steps" aria-label="Import steps">
+      <li id="wizard-step-1" aria-current="step"><span>1</span> Check score</li>
+      <li id="wizard-step-2"><span>2</span> Review details</li>
+      <li id="wizard-step-3"><span>3</span> Confirm matches</li>
+    </ol>
+    <section id="upload-step" class="wizard-panel" aria-labelledby="upload-step-heading">
+      <h2 id="upload-step-heading">Choose a score file</h2>
+      <p class="muted-copy">We’ll check for an exact file or page match before adding it to your library.</p>
+      <p id="import-login-required" class="request-status" role="status" hidden>Log in with the demo account to import a score.</p>
+      <form id="import-form" action="/api/library/import/check" method="post" enctype="multipart/form-data" hidden>
+        <label class="file-field" for="score-file">
+          <span class="file-symbol" aria-hidden="true">♪</span>
+          <span class="file-title">Select a score</span>
+          <span class="file-hint">PDF, PNG, JPEG, TIFF, BMP, WEBP, or GIF</span>
+          <input id="score-file" name="file" type="file" accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp,.gif" required>
+        </label>
+        <div class="form-footer">
+          <p id="selected-file" class="selected-file" aria-live="polite">No file selected</p>
+          <button id="check-button" type="submit">Check and continue</button>
+        </div>
+      </form>
+      <p id="import-status" class="request-status" role="status" aria-live="polite" hidden></p>
+      <section id="import-error" class="request-error" role="alert" hidden></section>
+      <section id="duplicate-result" class="duplicate-result" aria-live="polite" hidden>
+        <p class="eyebrow">Already catalogued</p>
+        <h2 id="duplicate-title"></h2>
+        <p id="duplicate-reason" class="muted-copy"></p>
+        <a id="duplicate-link" class="primary-link" href="#">View existing work</a>
+      </section>
+    </section>
+    <section id="review-step" class="wizard-panel" aria-labelledby="review-heading" hidden>
+      <p class="eyebrow">Added to your library</p>
+      <div class="review-heading-row">
+        <div>
+          <h2 id="review-heading">Review title and metadata</h2>
+          <p id="review-original-name" class="muted-copy"></p>
+        </div>
+      </div>
+      <div class="review-layout">
+        <div class="review-form-column">
+          <form id="metadata-form">
+            <label for="work-title">Title</label>
+            <input id="work-title" name="DisplayName" maxlength="255" required>
+            <div id="primary-metadata" class="metadata-inputs"></div>
+            <details class="additional-fields">
+              <summary>Additional fields</summary>
+              <div id="additional-metadata" class="metadata-inputs"></div>
+            </details>
+            <p id="save-error" class="request-error" role="alert" hidden></p>
+            <div class="form-footer">
+              <p id="save-status" class="selected-file" role="status" aria-live="polite"></p>
+              <button id="save-button" type="submit">Save details</button>
+            </div>
+          </form>
+          <details class="ocr-details">
+            <summary>Recognized text</summary>
+            <pre id="recognized-text" class="ocr-text"></pre>
+          </details>
+        </div>
+        <aside class="review-score-preview" aria-label="Score preview">
+          <img id="review-thumbnail" alt="Full-page score preview" width="464" height="600" hidden>
+        </aside>
+      </div>
+    </section>
+    <section id="matches-step" class="wizard-panel" aria-labelledby="match-heading" hidden>
+      <p class="eyebrow">Import complete</p>
+      <h2 id="match-heading">Possible related works</h2>
+      <p id="match-instruction" class="muted-copy"></p>
+      <div id="ranked-matches" class="ranked-matches"></div>
+      <p id="match-confirmation" class="request-status" role="status" aria-live="polite" hidden></p>
+      <a id="finish-import-link" class="primary-link" href="#">View imported work</a>
+    </section>
+    <dialog id="duplicate-preview-dialog" class="score-preview-dialog" aria-labelledby="duplicate-preview-title">
+      <div class="dialog-heading">
+        <h2 id="duplicate-preview-title"></h2>
+        <button id="close-duplicate-preview" class="dialog-close" type="button" aria-label="Close preview">×</button>
+      </div>
+      <img id="duplicate-preview-image" alt="Full-page score preview" width="464" height="600">
+    </dialog>
+    <details id="import-debug-panel" class="debug-panel" hidden>
+      <summary>Debug information</summary>
+      <dl class="debug-hashes">
+        <dt>SHA-256</dt><dd><code id="debug-file-hash"></code></dd>
+        <dt>Visual hash</dt><dd><code id="debug-visual-hash"></code></dd>
+      </dl>
+      <h2>Raw OCR text</h2>
+      <pre id="debug-ocr-text" class="ocr-text"></pre>
+    </details>
+  </main>
+</body>
+</html>
