@@ -23,13 +23,14 @@ class DataManagerTests(unittest.TestCase):
         self.assertEqual(owner["Name"], "Local Owner")
         self.assertEqual(owner["Email"], "local@kliros.invalid")
         self.assertTrue(owner["JoinedAt"])
+        self.assertEqual(owner["UserType"], "admin")
         self.assertEqual(len(manager.metadata_definitions()), len(METADATA_SEED))
         tradition = next(row for row in manager.metadata_definitions() if row["Name"] == "Tradition")
         self.assertIn("Byzantine", tradition["Options"])
         self.assertTrue(manager.metadata_definitions()[0]["Core"])
         self.assertEqual(manager.metadata_definitions()[2]["Type"], "string")
         database = json.loads(database_path.read_text(encoding="utf-8"))
-        self.assertEqual(database["schema_version"], 7)
+        self.assertEqual(database["schema_version"], 8)
         self.assertIn("FileHash", [column["name"] for column in manager.table("resource")["columns"]])
         self.assertEqual(manager.rows("favorites"), [])
 
@@ -60,7 +61,7 @@ class DataManagerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "UserID"):
             manager.insert_resource({"OriginalName": "score.png", "UserID": 999})
 
-    def test_deletes_resource_and_clears_relationships(self):
+    def test_soft_deletes_resource_and_preserves_group_relationships(self):
         manager = DataManager(self.tmp_path / "db.json")
         first = manager.insert_resource({"OriginalName": "score.png", "UserID": 1})
         second = manager.insert_resource({"OriginalName": "part.png", "UserID": 1, "GroupID": first["id"]})
@@ -68,8 +69,11 @@ class DataManagerTests(unittest.TestCase):
         deleted = manager.delete_resource(first["id"])
 
         self.assertEqual(deleted["OriginalName"], "score.png")
-        self.assertEqual([row["id"] for row in manager.rows("resource")], [second["id"]])
-        self.assertIsNone(manager.rows("resource")[0]["GroupID"])
+        self.assertTrue(deleted["Hidden"])
+        self.assertEqual([row["id"] for row in manager.rows("resource")], [first["id"], second["id"]])
+        self.assertEqual([row["id"] for row in manager.visible_resources()], [second["id"]])
+        self.assertEqual(manager.rows("resource")[1]["GroupID"], first["id"])
+        self.assertIsNone(manager.delete_resource(first["id"]))
 
     def test_migrates_joined_at_for_existing_users_without_losing_resources(self):
         database_path = self.tmp_path / "db.json"
@@ -78,16 +82,49 @@ class DataManagerTests(unittest.TestCase):
         database = json.loads(database_path.read_text(encoding="utf-8"))
         database["schema_version"] = 5
         database["tables"]["user"]["columns"] = [
-            column for column in database["tables"]["user"]["columns"] if column["name"] != "JoinedAt"
+            column for column in database["tables"]["user"]["columns"]
+            if column["name"] not in {"JoinedAt", "UserType"}
         ]
         database["tables"]["user"]["rows"][0].pop("JoinedAt")
+        database["tables"]["user"]["rows"][0].pop("UserType")
         database_path.write_text(json.dumps(database), encoding="utf-8")
 
         migrated = DataManager(database_path)
 
         self.assertEqual(migrated.rows("resource")[0]["OriginalName"], "existing.pdf")
         self.assertTrue(migrated.rows("user")[0]["JoinedAt"])
-        self.assertEqual(json.loads(database_path.read_text(encoding="utf-8"))["schema_version"], 6)
+        self.assertEqual(migrated.rows("user")[0]["UserType"], "admin")
+        self.assertEqual(json.loads(database_path.read_text(encoding="utf-8"))["schema_version"], 8)
+
+    def test_migrates_user_types_and_updates_only_regular_or_moderator_users(self):
+        database_path = self.tmp_path / "db.json"
+        manager = DataManager(database_path)
+        resource = manager.insert_resource({"OriginalName": "existing.pdf", "UserID": 1})
+        database = json.loads(database_path.read_text(encoding="utf-8"))
+        database["schema_version"] = 7
+        user_table = database["tables"]["user"]
+        user_table["columns"] = [column for column in user_table["columns"] if column["name"] != "UserType"]
+        for user in user_table["rows"]:
+            user.pop("UserType")
+        user_table["rows"].append({
+            "UserID": 2,
+            "Name": "Regular user",
+            "Email": "regular@example.test",
+            "JoinedAt": "2026-01-01 00:00:00",
+        })
+        database_path.write_text(json.dumps(database), encoding="utf-8")
+
+        migrated = DataManager(database_path)
+
+        self.assertEqual([user["UserType"] for user in migrated.rows("user")], ["admin", "regular"])
+        self.assertEqual(migrated.rows("resource")[0]["id"], resource["id"])
+        self.assertEqual(migrated.update_user_type(2, "moderator")["UserType"], "moderator")
+        self.assertEqual(migrated.update_user_type(2, "regular")["UserType"], "regular")
+        self.assertIsNone(migrated.update_user_type(3, "regular"))
+        with self.assertRaisesRegex(ValueError, "regular or moderator"):
+            migrated.update_user_type(2, "admin")
+        with self.assertRaisesRegex(ValueError, "Admin users"):
+            migrated.update_user_type(1, "regular")
 
     def test_favorites_toggle_and_collection_members_are_private_and_unordered(self):
         manager = DataManager(self.tmp_path / "db.json")

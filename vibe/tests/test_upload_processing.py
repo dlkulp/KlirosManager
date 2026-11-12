@@ -1,6 +1,7 @@
 import io
 import hashlib
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -39,6 +40,112 @@ class UploadRouteTests(unittest.TestCase):
 
     def login_demo(self):
         return self.client.post("/login")
+
+    def test_api_cors_allows_configured_frontends_with_credentials_and_preflight(self):
+        origin = "http://localhost:5173"
+        response = self.client.get("/api/session", headers={"Origin": origin})
+        self.assertEqual(response.headers["Access-Control-Allow-Origin"], origin)
+        self.assertEqual(response.headers["Access-Control-Allow-Credentials"], "true")
+        self.assertIn("Origin", response.headers["Vary"])
+
+        preflight = self.client.options(
+            "/api/library/1/favorite",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "DELETE",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+        self.assertEqual(preflight.status_code, 200)
+        self.assertEqual(preflight.headers["Access-Control-Allow-Origin"], origin)
+        self.assertIn("DELETE", preflight.headers["Access-Control-Allow-Methods"])
+        self.assertIn("Content-Type", preflight.headers["Access-Control-Allow-Headers"])
+
+        denied = self.client.get("/api/session", headers={"Origin": "https://unlisted.example"})
+        self.assertNotIn("Access-Control-Allow-Origin", denied.headers)
+        self.assertEqual(
+            self.client.get("/search", headers={"Origin": origin}).headers.get("Access-Control-Allow-Origin"),
+            None,
+        )
+
+    def test_api_cors_allowlist_can_be_configured_in_settings_json(self):
+        settings_path = self.root / "settings.json"
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+        settings["cors_allowed_origins"] = ["https://frontend.example"]
+        settings_path.write_text(json.dumps(settings), encoding="utf-8")
+        app = create_app({
+            "TESTING": True,
+            "DATABASE_PATH": self.root / "settings-cors-db.json",
+            "SETTINGS_PATH": settings_path,
+        })
+
+        response = app.test_client().get(
+            "/api/session",
+            headers={"Origin": "https://frontend.example"},
+        )
+        self.assertEqual(response.headers["Access-Control-Allow-Origin"], "https://frontend.example")
+
+    def test_admin_can_switch_regular_and_moderator_but_cannot_assign_admin(self):
+        data_manager = self.app.extensions["data_manager"]
+        database = json.loads((self.root / "db.json").read_text(encoding="utf-8"))
+        database["tables"]["user"]["rows"].append({
+            "UserID": 2,
+            "Name": "Choir member",
+            "Email": "member@example.test",
+            "JoinedAt": "2026-01-01 00:00:00",
+            "UserType": "regular",
+        })
+        data_manager._write(database)
+        endpoint = "/api/admin/users/2/type"
+
+        self.assertEqual(self.client.patch(endpoint, json={"user_type": "moderator"}).status_code, 401)
+        self.login_demo()
+        self.assertEqual(self.client.patch("/api/admin/users/1/type", json={"user_type": "regular"}).status_code, 400)
+        self.assertEqual(self.client.patch(endpoint, json={"user_type": "admin"}).status_code, 400)
+        self.assertEqual(self.client.patch(endpoint, json={"user_type": "unknown"}).status_code, 400)
+        self.assertEqual(self.client.patch("/api/admin/users/999/type", json={"user_type": "regular"}).status_code, 404)
+
+        moderator = self.client.patch(endpoint, json={"user_type": "moderator"})
+        self.assertEqual(moderator.status_code, 200)
+        self.assertEqual(moderator.get_json(), {"user_id": 2, "user_type": "moderator"})
+        regular = self.client.patch(endpoint, json={"user_type": "regular"})
+        self.assertEqual(regular.status_code, 200)
+        self.assertEqual(data_manager.get_user(2)["UserType"], "regular")
+
+        with self.client.session_transaction() as session_data:
+            session_data["user_id"] = 2
+        forbidden = self.client.patch(endpoint, json={"user_type": "moderator"})
+        self.assertEqual(forbidden.status_code, 403)
+        self.assertEqual(data_manager.get_user(2)["UserType"], "regular")
+
+    def test_session_cookie_sets_configured_samesite_and_secure_flags(self):
+        local_cookie = self.client.post("/api/login").headers["Set-Cookie"]
+        self.assertIn("SameSite=Lax", local_cookie)
+        self.assertNotIn("; Secure", local_cookie)
+
+        with patch.dict(os.environ, {
+            "SESSION_COOKIE_SAMESITE": "None",
+            "SESSION_COOKIE_SECURE": "true",
+            "CORS_ALLOWED_ORIGINS": "https://frontend.example",
+        }):
+            app = create_app({
+                "TESTING": True,
+                "DATABASE_PATH": self.root / "secure-db.json",
+                "SETTINGS_PATH": self.root / "settings.json",
+            })
+            response = app.test_client().post(
+                "/api/login",
+                headers={"Origin": "https://frontend.example"},
+            )
+
+        secure_cookie = response.headers["Set-Cookie"]
+        self.assertIn("SameSite=None", secure_cookie)
+        self.assertIn("; Secure", secure_cookie)
+        self.assertEqual(response.headers["Access-Control-Allow-Credentials"], "true")
+        self.assertEqual(
+            response.headers["Access-Control-Allow-Origin"],
+            "https://frontend.example",
+        )
 
     def test_upload_saves_guid_file_compares_previous_rows_and_persists_result(self):
         self.login_demo()
@@ -422,6 +529,43 @@ class UploadRouteTests(unittest.TestCase):
         self.assertFalse(data_manager.rows("collection"))
         self.assertFalse(data_manager.rows("collection_member"))
 
+    def test_profile_favorites_are_owner_scoped_and_unfavorite_is_idempotent(self):
+        data_manager = self.app.extensions["data_manager"]
+        database_path = self.root / "db.json"
+        database = json.loads(database_path.read_text(encoding="utf-8"))
+        other_user = dict(database["tables"]["user"]["rows"][0])
+        other_user.update({"UserID": 2, "Name": "Other user", "Email": "other@example.test", "ProfileID": "other"})
+        database["tables"]["user"]["rows"].append(other_user)
+        database_path.write_text(json.dumps(database), encoding="utf-8")
+        resource = data_manager.insert_resource({
+            "OriginalName": "favorite.pdf", "DisplayName": "Favorite Hymn", "UserID": 1,
+        })
+        other_resource = data_manager.insert_resource({"OriginalName": "other.pdf", "UserID": 2})
+        data_manager.toggle_favorite(1, resource["id"])
+        data_manager.toggle_favorite(2, resource["id"])
+        data_manager.toggle_favorite(2, other_resource["id"])
+        endpoint = f"/api/library/{resource['id']}/favorite"
+        self.assertEqual(self.client.delete(endpoint).status_code, 401)
+
+        self.login_demo()
+        payload = self.client.get("/api/profile").get_json()
+        self.assertEqual([work["id"] for work in payload["favorites"]], [resource["id"]])
+        self.assertEqual(payload["favorites"][0]["title"], "Favorite Hymn")
+        self.assertEqual(payload["favorites"][0]["detail_url"], f"/library/{resource['id']}")
+        with self.client.get("/profile") as page:
+            self.assertIn(b'id="profile-favorites"', page.data)
+            self.assertIn(b'id="profile-no-favorites"', page.data)
+        for _ in range(2):
+            response = self.client.delete(endpoint)
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(response.get_json()["is_favorite"])
+        self.assertEqual(self.client.get("/api/profile").get_json()["favorites"], [])
+        self.assertTrue(data_manager.is_favorite(2, resource["id"]))
+        self.assertTrue(data_manager.is_favorite(2, other_resource["id"]))
+        self.assertIsNotNone(data_manager.get_user(1))
+        self.assertEqual(len(data_manager.rows("resource")), 2)
+        self.assertEqual(self.client.delete("/api/library/9999/favorite").status_code, 404)
+
     def test_search_page_shows_all_works_and_metadata_filter_data(self):
         data_manager = self.app.extensions["data_manager"]
         data_manager.insert_resource({
@@ -474,7 +618,7 @@ class UploadRouteTests(unittest.TestCase):
         self.assertEqual(len(second_page["results"]), 2)
 
     def test_page_routes_are_static_and_data_is_available_from_json_apis(self):
-        for path in ("/", "/library", "/search", "/profile", "/import", "/library/987"):
+        for path in ("/", "/library", "/search", "/profile", "/import"):
             with self.subTest(path=path):
                 response = self.client.get(path)
                 page = response.get_data(as_text=True)
@@ -545,6 +689,7 @@ class UploadRouteTests(unittest.TestCase):
         self.assertIn("thumbnail/300 232w", recent_works[0]["thumbnail_srcset"])
         self.assertIn("thumbnail/600 464w", recent_works[0]["thumbnail_srcset"])
         self.assertIn('href="/library"', home_html)
+        self.assertEqual(self.client.get("/library/987").status_code, 404)
 
         library = self.client.get("/library")
         library_html = library.get_data(as_text=True)
@@ -591,9 +736,92 @@ class UploadRouteTests(unittest.TestCase):
         deleted = self.client.post(f"/library/{resource_id}/delete")
         self.assertEqual(deleted.status_code, 303)
         self.assertEqual(deleted.headers["Location"], "/")
-        self.assertFalse(deleted_source.exists())
-        self.assertTrue(all(not path.exists() for path in deleted_thumbnails))
+        self.assertTrue(deleted_source.exists())
+        self.assertTrue(all(path.exists() for path in deleted_thumbnails))
+        deleted_row = next(
+            row for row in self.app.extensions["data_manager"].rows("resource")
+            if row["id"] == resource_id
+        )
+        self.assertTrue(deleted_row["Hidden"])
         self.assertIsNone(self.app.extensions["data_manager"].delete_resource(resource_id))
+
+    def test_hidden_resources_are_omitted_from_reads_but_keep_relationships(self):
+        self.login_demo()
+        data_manager = self.app.extensions["data_manager"]
+        upload_folder = self.root / "uploads"
+        upload_folder.mkdir(exist_ok=True)
+        source = upload_folder / "hidden-score.pdf"
+        source.write_bytes(self.pdf_bytes())
+        hidden = data_manager.insert_resource({
+            "OriginalName": source.name,
+            "DisplayName": "Hidden score title",
+            "Source": str(source),
+            "UserID": 1,
+            "FileHash": "hidden-file-hash",
+            "MetaData": {"Language": {"value": "Hidden-only language"}},
+        })
+        visible = data_manager.insert_resource({
+            "OriginalName": "visible-score.pdf",
+            "DisplayName": "Visible score title",
+            "UserID": 1,
+            "MetaData": {"Language": {"value": "English"}},
+        })
+        data_manager.toggle_favorite(1, hidden["id"])
+        collection = data_manager.create_collection(1, "Saved")
+        data_manager.add_resource_to_collection(1, collection["id"], hidden["id"])
+        data_manager.add_resource_to_collection(1, collection["id"], visible["id"])
+
+        deleted = self.client.delete(f"/api/library/{hidden['id']}")
+
+        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(deleted.get_json(), {"deleted": True, "hidden": True, "resource_id": hidden["id"]})
+        self.assertTrue(source.exists())
+        self.assertEqual(self.client.get(f"/library/{hidden['id']}").status_code, 404)
+        self.assertEqual(data_manager.find_resource_by_file_hash("hidden-file-hash"), None)
+        self.assertEqual(
+            [(row["ResourceID"], row["UserID"]) for row in data_manager.rows("favorites")],
+            [(hidden["id"], 1)],
+        )
+        self.assertEqual(
+            [row["ResourceID"] for row in data_manager.rows("collection_member")],
+            [hidden["id"], visible["id"]],
+        )
+
+        home = self.client.get("/api/home").get_json()["recent_works"]
+        library = self.client.get("/api/library").get_json()["works"]
+        search = self.client.get("/api/search", query_string={"q": "Hidden score title"}).get_json()
+        self.assertNotIn(hidden["id"], [row["id"] for row in home])
+        self.assertEqual([row["id"] for row in library], [visible["id"]])
+        self.assertEqual(search["total"], 0)
+        self.assertNotIn("Hidden-only language", self.client.get("/api/search").get_json()["facets"]["Language"])
+
+        profile = self.client.get("/api/profile").get_json()
+        self.assertEqual([row["id"] for row in profile["uploads"]], [visible["id"]])
+        self.assertEqual(profile["favorites"], [])
+        self.assertEqual([row["id"] for row in profile["collections"][0]["items"]], [visible["id"]])
+
+        hidden_resource_paths = [
+            f"/api/library/{hidden['id']}",
+            f"/api/library/{hidden['id']}/file",
+            f"/api/library/{hidden['id']}/download",
+            f"/api/library/{hidden['id']}/thumbnail",
+            f"/api/library/{hidden['id']}/thumbnail/600",
+        ]
+        for path in hidden_resource_paths:
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, 404)
+        self.assertEqual(self.client.patch(
+            f"/api/library/{hidden['id']}",
+            json={"DisplayName": "No longer visible", "metadata": {}},
+        ).status_code, 404)
+        self.assertEqual(self.client.post(
+            f"/api/library/{hidden['id']}/favorite",
+        ).status_code, 404)
+        self.assertEqual(self.client.post(
+            f"/api/library/{hidden['id']}/collections",
+            json={"collection_id": collection["id"]},
+        ).status_code, 404)
+        self.assertEqual(self.client.delete(f"/api/library/{hidden['id']}").status_code, 404)
 
     def test_import_delete_and_metadata_updates_require_demo_login(self):
         upload_folder = self.root / "uploads"

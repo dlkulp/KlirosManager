@@ -20,6 +20,12 @@ Then launch the app with the root script:
 
 The script locates Tesseract (including the standard per-user Windows install), sets `TESSERACT_CMD`, and starts Flask. Open `http://127.0.0.1:5000`. On macOS or Linux, activate with `source .venv/bin/activate` and run `python app.py` instead.
 
+## Cross-origin API access
+
+The API allows credentialed CORS requests from the exact origins in `settings.json` under `cors_allowed_origins` (an array of scheme/host/port strings). The default Vite development origins are `http://localhost:5173` and `http://127.0.0.1:5173`. Edit the array, for example to `["https://web.example.com", "http://localhost:5174"]`, then restart Flask. The optional `CORS_ALLOWED_ORIGINS` environment variable overrides the file with a comma-separated list. Origins not on the allowlist receive no `Access-Control-Allow-Origin` header; wildcard origins are not supported with credentials. CORS headers apply to `/api/*`, including API media routes and preflight requests.
+
+The frontend must send cookies (`credentials: "include"` in fetch). A different port on `localhost` is cross-origin but same-site and works with the default `SameSite=Lax` session cookie. For a truly cross-site HTTPS frontend, set `SESSION_COOKIE_SAMESITE=None` and `SESSION_COOKIE_SECURE=true`; browser third-party-cookie restrictions may still block the session, so a same-site deployment or reverse proxy is more reliable. CORS is not authentication or CSRF protection; the local demo login is not suitable for production.
+
 ## Local prerequisites
 
 - Python 3.10 or later.
@@ -53,11 +59,13 @@ Relative paths resolve from this project directory; absolute paths are also acce
 
 Browser routes `/`, `/library`, `/search`, `/profile`, `/import`, and `/library/<id>` serve static HTML shells. Page data is provided by JSON APIs: `GET /api/session`, `/api/home`, `/api/library`, `/api/library/<id>`, `/api/profile`, and `/api/search` (query, `filters`, `page`, `page_size`, and `sort`). Authentication is exposed through `POST /api/login` and `/api/logout`.
 
-Import, metadata updates, favorites, collections, and deletes are API operations. `POST /api/library/import/check` accepts multipart file data and returns the upload, OCR, and metadata-review payload; `PATCH /api/library/<id>` updates metadata and returns possible matches. `POST /api/library/<id>/favorite` and `/collections` manage the signed-in user's data, while `DELETE /api/library/<id>` deletes a work. The `/import` shell checks `/api/session` and hides its form for guests; write APIs enforce login. Collection management is owner-scoped regardless of `Public`; public visibility and subscriptions are future work.
+Import, metadata updates, favorites, collections, and deletes are API operations. `POST /api/library/import/check` accepts multipart file data and returns the upload, OCR, and metadata-review payload; `PATCH /api/library/<id>` updates metadata and returns possible matches. `POST /api/library/<id>/favorite` and `/collections` manage the signed-in user's data, while `DELETE /api/library/<id>` soft-deletes a work by setting `Hidden`. Hidden works are omitted from lists, search, profile collections, detail pages, and media endpoints; their files and relationships are retained. The `/import` shell checks `/api/session` and hides its form for guests; write APIs enforce login. Collection management is owner-scoped regardless of `Public`; public visibility and subscriptions are future work.
+
+Users have a `UserType` of `regular`, `moderator`, or `admin`. New users default to `regular`; the seeded `Local Owner` is `admin`. An admin can switch a non-admin user between regular and moderator with `PATCH /api/admin/users/<id>/type` and a JSON body such as `{"user_type":"moderator"}`. The endpoint cannot grant admin or demote an admin.
 
 `GET /library/<id>/download` lets any visitor download the original document. The attachment name uses the work title, appends the composer when present, and preserves the original extension. Download counts are deferred.
 
-Signed-in users can visit `/profile` to see their name, join date, uploads, and owned collections. From there they can rename or delete a collection and remove individual items. Collection management follows ownership regardless of the `Public` flag; cross-user visibility and subscriptions are future features.
+Signed-in users can visit `/profile` to see their name, join date, uploads, favorites, and owned collections. `GET /api/profile` includes full score-card data in `uploads`, `favorites`, and each collection's `items`. `DELETE /api/library/<id>/favorite` removes the signed-in user's favorite without toggling it back on when repeated. From the profile users can unfavorite scores, rename or delete a collection, and remove individual items. All score lists share a vanilla JavaScript card renderer in `static/site.js`, with no frontend build step. Collection management follows ownership regardless of the `Public` flag; cross-user visibility and subscriptions are future features.
 
 `/search` displays all scores initially, with live text and metadata filters, 24/48/96-item pages, and upload-date, popularity, or name sorting. Text search covers titles and metadata values. Popularity uses favorites until download counts are available.
 

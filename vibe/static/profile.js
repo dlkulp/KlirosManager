@@ -2,6 +2,7 @@ const profileMessage = document.querySelector("#profile-message");
 const profileContent = document.querySelector("#profile-content");
 const uploadList = document.querySelector("#profile-upload-list");
 const collectionsContainer = document.querySelector("#profile-collections");
+const favoritesContainer = document.querySelector("#profile-favorites");
 
 fetch("/api/profile")
   .then(async (response) => {
@@ -25,39 +26,37 @@ function renderProfile(profile) {
   joined.textContent = `Joined ${profile.user.JoinedAt || "date unavailable"}`;
   document.querySelector("#profile-upload-count").textContent = profile.uploads.length;
   document.querySelector("#profile-collection-count").textContent = profile.collections.length;
+  const favorites = profile.favorites || [];
+  document.querySelector("#profile-favorite-count").textContent = favorites.length;
+  document.querySelector("#profile-no-favorites").hidden = favorites.length > 0;
   if (!profile.uploads.length) document.querySelector("#profile-no-uploads").hidden = false;
   if (!profile.collections.length) document.querySelector("#profile-no-collections").hidden = false;
   for (const upload of profile.uploads) uploadList.append(renderUpload(upload));
+  for (const work of favorites) {
+    const item = renderUpload(work);
+    const removeButton = document.createElement("button");
+    removeButton.className = "score-remove-button";
+    removeButton.type = "button";
+    removeButton.textContent = "★";
+    removeButton.title = "Unfavorite";
+    removeButton.setAttribute("aria-label", `Unfavorite ${work.title || work.OriginalName || "score"}`);
+    removeButton.addEventListener("click", async () => {
+      removeButton.disabled = true;
+      try {
+        await sendProfileAction(`/api/library/${work.id}/favorite`, "DELETE");
+      } finally {
+        removeButton.disabled = false;
+      }
+    });
+    item.append(removeButton);
+    favoritesContainer.append(item);
+  }
   for (const collection of profile.collections) collectionsContainer.append(renderCollection(collection));
 }
 
 function renderUpload(work) {
   const item = document.createElement("li");
-  if (work.thumbnail_url) {
-    const image = document.createElement("img");
-    image.src = work.thumbnail_url;
-    image.srcset = work.thumbnail_srcset || "";
-    image.sizes = "48px";
-    image.alt = "";
-    image.width = 48;
-    image.height = 62;
-    item.append(image);
-  } else {
-    const placeholder = document.createElement("span");
-    placeholder.className = "profile-upload-placeholder";
-    placeholder.setAttribute("aria-hidden", "true");
-    placeholder.textContent = "♫";
-    item.append(placeholder);
-  }
-  const copy = document.createElement("div");
-  copy.className = "profile-item-copy";
-  const link = document.createElement("a");
-  link.href = work.detail_url;
-  link.textContent = work.title || work.OriginalName || "Untitled";
-  const original = document.createElement("span");
-  original.textContent = work.OriginalName || "";
-  copy.append(link, original);
-  item.append(copy);
+  item.append(createWorkCard(work));
   return item;
 }
 
@@ -114,17 +113,17 @@ function renderCollection(collection) {
 
   if (collection.items.length) {
     const itemList = document.createElement("ul");
-    itemList.className = "collection-item-list";
+    itemList.className = "score-list search-result-grid";
     for (const work of collection.items) {
       const item = document.createElement("li");
-      const link = document.createElement("a");
-      link.href = work.detail_url;
-      link.textContent = work.title || work.OriginalName || "Untitled";
+      const link = createWorkCard(work);
       const removeForm = document.createElement("form");
       const removeButton = document.createElement("button");
-      removeButton.className = "text-danger";
+      removeButton.className = "score-remove-button";
       removeButton.type = "button";
-      removeButton.textContent = "Remove";
+      removeButton.textContent = "×";
+      removeButton.title = "Remove from collection";
+      removeButton.setAttribute("aria-label", `Remove ${work.title || work.OriginalName || "score"} from collection`);
       removeButton.addEventListener("click", async () => {
         if (!window.confirm("Remove this score from the collection?")) return;
         await sendProfileAction(`/api/profile/collections/${collection.id}/items/${work.id}`, "DELETE");
@@ -144,16 +143,19 @@ function renderCollection(collection) {
 }
 
 async function sendProfileAction(url, method, body) {
-  const response = await fetch(url, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    profileMessage.textContent = payload.error || "The profile change could not be saved.";
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || "The profile change could not be saved.");
+    }
+    window.location.reload();
+  } catch (error) {
+    profileMessage.textContent = error instanceof Error ? error.message : "The profile change could not be saved.";
     profileMessage.hidden = false;
-    return;
   }
-  window.location.reload();
 }

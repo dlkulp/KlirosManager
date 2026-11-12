@@ -20,11 +20,16 @@ class SettingsManagerTests(unittest.TestCase):
         self.assertEqual(settings.get("max_hamming_distance"), 10)
         self.assertEqual(settings.get("invalid_hamming_distance"), 50)
         self.assertFalse(settings.get("extract_pdf_text"))
+        self.assertEqual(settings.get("cors_allowed_origins"), [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ])
         self.assertEqual(settings.reference_image_path(), (self.root / "references").resolve())
         settings.set("max_hamming_distance", 3)
         settings.set("invalid_hamming_distance", 25)
         settings.set("reference_image_path", "reference.png")
         settings.set("extract_pdf_text", True)
+        settings.set("cors_allowed_origins", ["https://web.example.com"])
         settings.set("future_option", {"enabled": True})
         reopened = SettingsManager(self.settings_path, project_root=self.root)
 
@@ -32,6 +37,7 @@ class SettingsManagerTests(unittest.TestCase):
         self.assertEqual(reopened.get("invalid_hamming_distance"), 25)
         self.assertEqual(reopened.reference_image_path(), (self.root / "reference.png").resolve())
         self.assertTrue(reopened.get("extract_pdf_text"))
+        self.assertEqual(reopened.get("cors_allowed_origins"), ["https://web.example.com"])
         self.assertEqual(reopened.get("future_option"), {"enabled": True})
         self.assertTrue(reopened.storage_path().is_dir())
         self.assertEqual(json.loads(self.settings_path.read_text(encoding="utf-8"))["future_option"], {"enabled": True})
@@ -61,6 +67,13 @@ class SettingsManagerTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "extract_pdf_text"):
             SettingsManager(self.settings_path, project_root=self.root)
+
+    def test_cors_origins_must_be_an_explicit_list_without_wildcards(self):
+        for value in ("https://web.example.com", ["*"], ["https://web.example.com", " "]):
+            with self.subTest(value=value):
+                self.settings_path.write_text(json.dumps({"cors_allowed_origins": value}), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "cors_allowed_origins"):
+                    SettingsManager(self.settings_path, project_root=self.root)
 
 
 if __name__ == "__main__":

@@ -30,16 +30,46 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         SETTINGS_PATH=PROJECT_ROOT / "settings.json",
         MAX_CONTENT_LENGTH=25 * 1024 * 1024,
         SECRET_KEY=os.environ.get("FLASK_SECRET_KEY", "local-kliros-poc-secret"),
+        CORS_ALLOWED_ORIGINS=os.environ.get("CORS_ALLOWED_ORIGINS"),
+        SESSION_COOKIE_SAMESITE=os.environ.get("SESSION_COOKIE_SAMESITE", "Lax"),
+        SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE", "false").casefold() in {"1", "true", "yes"},
     )
     if test_config:
         app.config.update(test_config)
 
     settings = SettingsManager(app.config["SETTINGS_PATH"], project_root=PROJECT_ROOT)
+    configured_origins = app.config["CORS_ALLOWED_ORIGINS"]
+    if configured_origins is None:
+        configured_origins = settings.get("cors_allowed_origins")
+    if isinstance(configured_origins, str):
+        configured_origins = configured_origins.split(",")
+    if not isinstance(configured_origins, (list, tuple, set)):
+        raise ValueError("CORS_ALLOWED_ORIGINS must be a list or comma-separated string.")
+    app.config["CORS_ALLOWED_ORIGINS"] = {
+        origin.strip().rstrip("/")
+        for origin in configured_origins
+        if isinstance(origin, str) and origin.strip() and origin.strip() != "*"
+    }
+
     data_manager = DataManager(app.config["DATABASE_PATH"])
     file_processing = FileProcessing()
     app.extensions["settings_manager"] = settings
     app.extensions["data_manager"] = data_manager
     app.extensions["file_processing"] = file_processing
+
+    @app.after_request
+    def add_api_cors_headers(response):
+        if request.path.startswith("/api/"):
+            response.vary.add("Origin")
+            origin = request.headers.get("Origin", "").rstrip("/")
+            if origin in app.config["CORS_ALLOWED_ORIGINS"]:
+                response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Access-Control-Allow-Credentials"] = "true"
+                response.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, DELETE, OPTIONS"
+                response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+                response.headers["Access-Control-Expose-Headers"] = "Content-Disposition, ETag, Last-Modified"
+                response.headers["Access-Control-Max-Age"] = "600"
+        return response
 
     @app.context_processor
     def inject_current_user():
@@ -49,6 +79,11 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     def is_logged_in() -> bool:
         user_id = session.get("user_id")
         return isinstance(user_id, int) and data_manager.get_user(user_id) is not None
+
+    def is_admin() -> bool:
+        user_id = session.get("user_id")
+        user = data_manager.get_user(user_id) if isinstance(user_id, int) else None
+        return user is not None and user.get("UserType") == "admin"
 
     @app.post("/login")
     def demo_login():
@@ -82,13 +117,33 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         session.pop("user_id", None)
         return jsonify({"logged_in": False, "user": None})
 
+    @app.patch("/api/admin/users/<int:user_id>/type")
+    def api_update_user_type(user_id: int):
+        if not is_logged_in():
+            return jsonify({"error": "Log in to manage user types."}), 401
+        if not is_admin():
+            return jsonify({"error": "Admin access is required."}), 403
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "Send a JSON object."}), 400
+        user_type = payload.get("user_type")
+        if not isinstance(user_type, str) or user_type not in {"regular", "moderator"}:
+            return jsonify({"error": "UserType must be regular or moderator."}), 400
+        try:
+            user = data_manager.update_user_type(user_id, user_type)
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        if user is None:
+            return jsonify({"error": "User not found."}), 404
+        return jsonify({"user_id": user["UserID"], "user_type": user["UserType"]})
+
     @app.get("/")
     def home():
         return send_file(PROJECT_ROOT / "templates" / "index.html", mimetype="text/html")
 
     @app.get("/api/home")
     def home_data():
-        resources = sorted(data_manager.rows("resource"), key=lambda row: row["id"], reverse=True)
+        resources = sorted(data_manager.visible_resources(), key=lambda row: row["id"], reverse=True)
         recent_works = [_resource_view(row, url_for) for row in resources[:3]]
         return jsonify({"recent_works": recent_works})
 
@@ -102,7 +157,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
     @app.get("/api/library")
     def library_data():
-        resources = sorted(data_manager.rows("resource"), key=lambda row: row["id"], reverse=True)
+        resources = sorted(data_manager.visible_resources(), key=lambda row: row["id"], reverse=True)
         return jsonify({"works": [_resource_view(row, url_for) for row in resources]})
 
     @app.get("/search")
@@ -150,7 +205,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             text = str(value).strip()
             return [text] if text else []
 
-        resources = data_manager.rows("resource")
+        resources = data_manager.visible_resources()
         facets: dict[str, list[str]] = {}
         for definition in definitions:
             facet_values = []
@@ -243,7 +298,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             abort(401)
         resources = {
             row["id"]: _resource_view(row, url_for)
-            for row in data_manager.rows("resource")
+            for row in data_manager.visible_resources()
         }
         uploads = sorted(
             (resource for resource in resources.values() if resource.get("UserID") == user_id),
@@ -251,6 +306,11 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             reverse=True,
         )
         collections = data_manager.collections_for_user(user_id)
+        favorites = [
+            resources[row["ResourceID"]]
+            for row in sorted(data_manager.rows("favorites"), key=lambda row: row["FavoritedAt"], reverse=True)
+            if row["UserID"] == user_id and row["ResourceID"] in resources
+        ]
         memberships = data_manager.rows("collection_member")
         for collection in collections:
             members = sorted(
@@ -266,6 +326,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             "user": user,
             "initials": "".join(word[0] for word in user["Name"].split()[:2]).upper(),
             "uploads": uploads,
+            "favorites": favorites,
             "collections": collections,
         })
 
@@ -336,6 +397,8 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
     @app.get("/library/<int:resource_id>")
     def library_detail(resource_id: int):
+        if _get_resource(data_manager, resource_id) is None:
+            abort(404)
         return send_file(PROJECT_ROOT / "templates" / "detail.html", mimetype="text/html")
 
     @app.get("/api/library/<int:resource_id>")
@@ -394,6 +457,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         })
 
     @app.post("/api/library/<int:resource_id>/favorite")
+    @app.delete("/api/library/<int:resource_id>/favorite")
     @app.post("/library/<int:resource_id>/favorite")
     def toggle_resource_favorite(resource_id: int):
         if _get_resource(data_manager, resource_id) is None:
@@ -402,7 +466,11 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         if not isinstance(user_id, int):
             return jsonify({"error": "Log in to save favorites."}), 401
         try:
-            is_favorite = data_manager.toggle_favorite(user_id, resource_id)
+            if request.method == "DELETE":
+                data_manager.remove_favorite(user_id, resource_id)
+                is_favorite = False
+            else:
+                is_favorite = data_manager.toggle_favorite(user_id, resource_id)
         except ValueError as error:
             return jsonify({"error": str(error)}), 400
         return jsonify({"is_favorite": is_favorite})
@@ -543,21 +611,6 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         resource = data_manager.delete_resource(resource_id)
         if resource is None:
             abort(404)
-        source_value = resource.get("Source")
-        paths = []
-        if source_value:
-            source_path = Path(source_value)
-            paths.extend((
-                source_path,
-                source_path.with_name(f"{source_path.stem}_300px.png"),
-                source_path.with_name(f"{source_path.stem}_600px.png"),
-                source_path.with_name(f"{source_path.stem}_128x128.png"),
-            ))
-        for path in paths:
-            try:
-                path.unlink(missing_ok=True)
-            except OSError:
-                app.logger.exception("Could not remove local resource file %s", path)
         return redirect(url_for("home"), code=303)
 
     @app.delete("/api/library/<int:resource_id>")
@@ -567,21 +620,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         resource = data_manager.delete_resource(resource_id)
         if resource is None:
             return jsonify({"error": "Work not found."}), 404
-        source_value = resource.get("Source")
-        if source_value:
-            source_path = Path(source_value)
-            paths = [
-                source_path,
-                source_path.with_name(f"{source_path.stem}_300px.png"),
-                source_path.with_name(f"{source_path.stem}_600px.png"),
-                source_path.with_name(f"{source_path.stem}_128x128.png"),
-            ]
-            for path in paths:
-                try:
-                    path.unlink(missing_ok=True)
-                except OSError:
-                    app.logger.exception("Could not remove local resource file %s", path)
-        return jsonify({"deleted": True, "resource_id": resource_id})
+        return jsonify({"deleted": True, "hidden": True, "resource_id": resource_id})
 
     @app.post("/api/library/import/check")
     @app.post("/library/import/check")
@@ -603,7 +642,8 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         file_hash = hashlib.sha256(file_bytes).hexdigest()
 
         storage_folder = settings.storage_path()
-        for resource_row in data_manager.rows("resource"):
+        visible_resources = data_manager.visible_resources()
+        for resource_row in visible_resources:
             if data_manager.resource_file_hash(resource_row):
                 continue
             source_path = resource_row.get("Source")
@@ -630,7 +670,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
             if visual_hash:
                 duplicate = next((
-                    candidate_resource for candidate_resource in data_manager.rows("resource")
+                    candidate_resource for candidate_resource in visible_resources
                     if candidate_resource.get("VisualHash") and candidate_resource["VisualHash"].casefold() == visual_hash.casefold()
                 ), None)
                 if duplicate:
@@ -680,7 +720,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             try:
                 result = file_processing.process_image(
                     candidate_image,
-                    data_manager.rows("resource"),
+                    visible_resources,
                     data_manager.metadata_definitions(),
                     settings.get("max_hamming_distance"),
                     candidate_path,
@@ -806,7 +846,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             abort(404)
         matches = FileProcessing.rank_similar_resources(
             resource,
-            data_manager.rows("resource"),
+            data_manager.visible_resources(),
             settings.get("max_hamming_distance"),
         )
         for match in matches:
@@ -831,7 +871,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
 
 def _get_resource(data_manager: DataManager, resource_id: int) -> dict[str, Any] | None:
-    return next((row for row in data_manager.rows("resource") if row["id"] == resource_id), None)
+    return next((row for row in data_manager.visible_resources() if row["id"] == resource_id), None)
 
 
 def _resource_view(resource: dict[str, Any], url_builder) -> dict[str, Any]:

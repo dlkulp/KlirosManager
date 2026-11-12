@@ -15,20 +15,6 @@ let activeRequest = null;
 let requestSequence = 0;
 let facetsRendered = false;
 
-function valuesFromMetadata(value) {
-  if (value === null || value === undefined || value === "") return [];
-  if (Array.isArray(value)) return value.flatMap(valuesFromMetadata);
-  if (typeof value === "object") {
-    if (Object.hasOwn(value, "value")) return valuesFromMetadata(value.value);
-    return Object.values(value).flatMap(valuesFromMetadata);
-  }
-  return [String(value).trim()].filter(Boolean);
-}
-
-function fieldValues(work, fieldName) {
-  return valuesFromMetadata((work.MetaData || {})[fieldName]);
-}
-
 function renderFilters(facets) {
   metadataFilters.replaceChildren();
   for (const [fieldName, choices] of Object.entries(facets)) {
@@ -102,7 +88,7 @@ function renderResults(payload) {
   resultsCount.textContent = `Showing ${firstResult}-${lastResult} of ${payload.total} results`;
   resultsContainer.replaceChildren();
   if (pageWorks.length) {
-    for (const work of pageWorks) resultsContainer.append(renderWork(work));
+    for (const work of pageWorks) resultsContainer.append(createWorkCard(work, searchableFieldNames));
   } else {
     const empty = document.createElement("p");
     empty.className = "search-empty";
@@ -110,50 +96,6 @@ function renderResults(payload) {
     resultsContainer.append(empty);
   }
   renderPagination(payload.page_count || 0);
-}
-
-function renderWork(work) {
-  const link = document.createElement("a");
-  link.className = "search-result-card";
-  link.href = work.detail_url;
-  if (work.thumbnail_url) {
-    const image = document.createElement("img");
-    image.src = work.thumbnail_url;
-    if (work.thumbnail_srcset) image.srcset = work.thumbnail_srcset;
-    if (work.thumbnail_sizes) image.sizes = work.thumbnail_sizes;
-    image.alt = "";
-    image.loading = "lazy";
-    image.width = 232;
-    image.height = 300;
-    link.append(image);
-  } else {
-    const placeholder = document.createElement("span");
-    placeholder.className = "search-result-placeholder";
-    placeholder.setAttribute("aria-hidden", "true");
-    placeholder.textContent = "♫";
-    link.append(placeholder);
-  }
-  const title = document.createElement("strong");
-  title.className = "search-result-title";
-  title.textContent = work.title || work.OriginalName || "Untitled";
-  link.append(title);
-  const summary = [];
-  for (const fieldName of searchableFieldNames) {
-    const value = fieldValues(work, fieldName);
-    if (value.length) summary.push(`${fieldName}: ${value.join(", ")}`);
-    if (summary.length === 2) break;
-  }
-  if (summary.length) {
-    const metadata = document.createElement("span");
-    metadata.className = "search-result-metadata";
-    metadata.textContent = summary.join(" · ");
-    link.append(metadata);
-  }
-  const originalName = document.createElement("span");
-  originalName.className = "search-result-original";
-  originalName.textContent = work.OriginalName || "";
-  link.append(originalName);
-  return link;
 }
 
 function renderPagination(pageCount) {

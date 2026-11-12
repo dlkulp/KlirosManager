@@ -17,34 +17,3 @@ fetch("/api/home")
     emptyState.hidden = false;
     emptyState.textContent = "Recent works could not be loaded.";
   });
-
-function createWorkCard(work) {
-  const link = document.createElement("a");
-  link.className = "work-card";
-  link.href = work.detail_url;
-  if (work.thumbnail_url) {
-    const image = document.createElement("img");
-    image.className = "work-thumbnail";
-    image.src = work.thumbnail_url;
-    image.srcset = work.thumbnail_srcset || "";
-    image.sizes = "(max-width: 600px) 112px, 128px";
-    image.alt = "";
-    image.width = 232;
-    image.height = 300;
-    link.append(image);
-  } else {
-    const placeholder = document.createElement("span");
-    placeholder.className = "work-thumbnail thumbnail-placeholder";
-    placeholder.setAttribute("aria-hidden", "true");
-    placeholder.textContent = "♫";
-    link.append(placeholder);
-  }
-  const title = document.createElement("span");
-  title.className = "work-title";
-  title.textContent = work.title || work.OriginalName || "Untitled";
-  const originalName = document.createElement("span");
-  originalName.className = "work-subtitle";
-  originalName.textContent = work.OriginalName || "";
-  link.append(title, originalName);
-  return link;
-}

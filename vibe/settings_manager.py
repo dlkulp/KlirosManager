@@ -15,6 +15,10 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "invalid_hamming_distance": 50,
     "reference_image_path": "references",
     "extract_pdf_text": False,
+    "cors_allowed_origins": [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
 }
 
 
@@ -54,6 +58,17 @@ class SettingsManager:
             raise ValueError("extract_pdf_text must be a boolean.")
         if not isinstance(self._settings["storage_folder"], str) or not self._settings["storage_folder"].strip():
             raise ValueError("storage_folder must be a non-empty path.")
+        cors_origins = self._settings["cors_allowed_origins"]
+        if (
+            not isinstance(cors_origins, list)
+            or any(
+                not isinstance(origin, str)
+                or not origin.strip()
+                or origin.strip() == "*"
+                for origin in cors_origins
+            )
+        ):
+            raise ValueError("cors_allowed_origins must be an array of non-empty origins; wildcard origins are not allowed.")
 
     def _write(self) -> None:
         temporary_path: str | None = None

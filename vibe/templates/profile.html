@@ -15,7 +15,7 @@
     <div class="topbar-inner">
       <a class="brand" href="/" aria-label="Kliros Manager home"><span class="brand-mark" aria-hidden="true">K</span><span>Kliros Manager</span></a>
       <nav class="site-nav" aria-label="Main navigation"><a href="/">Home</a><a href="/library">Library</a><a href="/search">Search</a><a href="/import">Import score</a></nav>
-      <div class="topbar-actions"><span class="local-label"><span class="local-dot" aria-hidden="true"></span>Local library</span><div id="account-controls" class="account-controls"></div></div>
+      <div class="topbar-actions"><div id="account-controls" class="account-controls"></div></div>
     </div>
   </header>
   <main class="page-shell profile-shell">
@@ -33,6 +33,7 @@
         </div>
         <dl class="profile-counts">
           <div><dt>Uploads</dt><dd id="profile-upload-count"></dd></div>
+          <div><dt>Favorites</dt><dd id="profile-favorite-count"></dd></div>
           <div><dt>Collections</dt><dd id="profile-collection-count"></dd></div>
         </dl>
       </section>
@@ -41,8 +42,15 @@
           <div><p class="eyebrow">Your library</p><h2 id="uploads-heading">Uploads</h2></div>
           <a class="text-link" href="/import">Import score <span aria-hidden="true">&rarr;</span></a>
         </div>
-        <ul id="profile-upload-list" class="profile-upload-list"></ul>
+        <ul id="profile-upload-list" class="score-list search-result-grid"></ul>
         <p id="profile-no-uploads" class="empty-state" hidden>You have not uploaded any scores yet.</p>
+      </section>
+      <section class="profile-section" aria-labelledby="favorites-heading">
+        <div class="profile-section-heading">
+          <div><p class="eyebrow">Saved scores</p><h2 id="favorites-heading">Favorites</h2></div>
+        </div>
+        <ul id="profile-favorites" class="score-list search-result-grid"></ul>
+        <p id="profile-no-favorites" class="empty-state" hidden>You have no favorites yet.</p>
       </section>
       <section class="profile-section" aria-labelledby="collections-heading">
         <div class="profile-section-heading">

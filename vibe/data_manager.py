@@ -18,6 +18,7 @@ TABLE_COLUMNS: dict[str, list[dict[str, Any]]] = {
         {"name": "Name", "type": "varchar(255)", "nullable": False},
         {"name": "Email", "type": "varchar(255)", "nullable": False},
         {"name": "JoinedAt", "type": "datetime", "nullable": False, "default": "CURRENT_TIMESTAMP"},
+        {"name": "UserType", "type": "enum('regular','moderator','admin')", "nullable": False, "default": "regular"},
     ],
     "federated_credential": [
         {"name": "RowID", "type": "int", "nullable": False, "primary_key": True},
@@ -117,7 +118,7 @@ class DataManager:
             for name, columns in TABLE_COLUMNS.items()
         }
         database = {
-            "schema_version": 7,
+            "schema_version": 8,
             "tables": tables,
             "next_ids": {name: 1 for name in TABLE_COLUMNS},
         }
@@ -126,6 +127,7 @@ class DataManager:
             "Name": "Local Owner",
             "Email": "local@kliros.invalid",
             "JoinedAt": datetime.now().replace(microsecond=0).isoformat(sep=" "),
+            "UserType": "admin",
         }
         database["tables"]["user"]["rows"].append(owner)
         database["next_ids"]["user"] = 2
@@ -141,9 +143,16 @@ class DataManager:
             raise ValueError(f"Could not read local database {self.path}: {error}") from error
         if not isinstance(database, dict) or not isinstance(database.get("tables"), dict):
             raise ValueError("Local database must contain a tables object.")
+        legacy_user_columns = [
+            column for column in TABLE_COLUMNS["user"]
+            if column["name"] not in {"JoinedAt", "UserType"}
+        ]
+        legacy_user_columns_with_joined_at = [
+            column for column in TABLE_COLUMNS["user"]
+            if column["name"] != "UserType"
+        ]
         if database.get("schema_version") == 5:
             user_table = database["tables"].get("user")
-            legacy_user_columns = [column for column in TABLE_COLUMNS["user"] if column["name"] != "JoinedAt"]
             if (
                 isinstance(user_table, dict)
                 and user_table.get("columns") == legacy_user_columns
@@ -152,7 +161,7 @@ class DataManager:
                 joined_at = datetime.now().replace(microsecond=0).isoformat(sep=" ")
                 for user in user_table["rows"]:
                     user.setdefault("JoinedAt", joined_at)
-                user_table["columns"] = copy.deepcopy(TABLE_COLUMNS["user"])
+                user_table["columns"] = copy.deepcopy(legacy_user_columns_with_joined_at)
                 database["schema_version"] = 6
                 self._write(database)
         if database.get("schema_version") == 6:
@@ -171,7 +180,20 @@ class DataManager:
                 for row in metadata_table["rows"]:
                     row["Searchable"] = searchable_by_name.get(row.get("Name"), False)
                 metadata_table["columns"] = copy.deepcopy(TABLE_COLUMNS["metadata"])
+            if isinstance(metadata_table, dict) and metadata_table.get("columns") == TABLE_COLUMNS["metadata"]:
                 database["schema_version"] = 7
+                self._write(database)
+        if database.get("schema_version") == 7:
+            user_table = database["tables"].get("user")
+            if (
+                isinstance(user_table, dict)
+                and user_table.get("columns") == legacy_user_columns_with_joined_at
+                and isinstance(user_table.get("rows"), list)
+            ):
+                for user in user_table["rows"]:
+                    user["UserType"] = "admin" if user.get("UserID") == 1 else "regular"
+                user_table["columns"] = copy.deepcopy(TABLE_COLUMNS["user"])
+                database["schema_version"] = 8
                 self._write(database)
         for name, columns in TABLE_COLUMNS.items():
             table = database["tables"].get(name)
@@ -213,6 +235,9 @@ class DataManager:
     def rows(self, name: str) -> list[dict[str, Any]]:
         return self.table(name)["rows"]
 
+    def visible_resources(self) -> list[dict[str, Any]]:
+        return [resource for resource in self.rows("resource") if not resource.get("Hidden", False)]
+
     def metadata_definitions(self) -> list[dict[str, Any]]:
         return self.rows("metadata")
 
@@ -221,7 +246,7 @@ class DataManager:
         with self._lock:
             database = self._read()
             for row in database["tables"]["resource"]["rows"]:
-                if self.resource_file_hash(row) == normalized_hash:
+                if not row.get("Hidden", False) and self.resource_file_hash(row) == normalized_hash:
                     return copy.deepcopy(row)
         return None
 
@@ -244,20 +269,13 @@ class DataManager:
         with self._lock:
             database = self._read()
             tables = database["tables"]
-            resource_rows = tables["resource"]["rows"]
-            resource = next((row for row in resource_rows if row["id"] == resource_id), None)
+            resource = next((
+                row for row in tables["resource"]["rows"]
+                if row["id"] == resource_id and not row.get("Hidden", False)
+            ), None)
             if resource is None:
                 return None
-            tables["resource"]["rows"] = [row for row in resource_rows if row["id"] != resource_id]
-            for row in tables["resource"]["rows"]:
-                if row.get("GroupID") == resource_id:
-                    row["GroupID"] = None
-            tables["collection_member"]["rows"] = [
-                row for row in tables["collection_member"]["rows"] if row["ResourceID"] != resource_id
-            ]
-            tables["favorites"]["rows"] = [
-                row for row in tables["favorites"]["rows"] if row["ResourceID"] != resource_id
-            ]
+            resource["Hidden"] = True
             self._write(database)
             return copy.deepcopy(resource)
 
@@ -271,7 +289,9 @@ class DataManager:
                 raise ValueError("Resource OriginalName is required.")
             if row.get("UserID") not in {user["UserID"] for user in tables["user"]["rows"]}:
                 raise ValueError("Resource UserID must reference an existing user.")
-            if row.get("GroupID") is not None and row["GroupID"] not in {item["id"] for item in tables["resource"]["rows"]}:
+            if row.get("GroupID") is not None and row["GroupID"] not in {
+                item["id"] for item in tables["resource"]["rows"] if not item.get("Hidden", False)
+            }:
                 raise ValueError("Resource GroupID must reference an existing resource.")
             if row.get("MetaData") is not None and not isinstance(row["MetaData"], dict):
                 raise ValueError("Resource MetaData must be an object or null.")
@@ -312,8 +332,22 @@ class DataManager:
     def get_user(self, user_id: int) -> dict[str, Any] | None:
         return next((row for row in self.rows("user") if row["UserID"] == user_id), None)
 
+    def update_user_type(self, user_id: int, user_type: str) -> dict[str, Any] | None:
+        if user_type not in {"regular", "moderator"}:
+            raise ValueError("UserType must be regular or moderator.")
+        with self._lock:
+            database = self._read()
+            user = next((row for row in database["tables"]["user"]["rows"] if row["UserID"] == user_id), None)
+            if user is None:
+                return None
+            if user["UserType"] == "admin":
+                raise ValueError("Admin users cannot be changed through this endpoint.")
+            user["UserType"] = user_type
+            self._write(database)
+            return copy.deepcopy(user)
+
     def count_resources_for_user(self, user_id: int) -> int:
-        return sum(1 for row in self.rows("resource") if row["UserID"] == user_id)
+        return sum(1 for row in self.visible_resources() if row["UserID"] == user_id)
 
     def is_favorite(self, user_id: int, resource_id: int) -> bool:
         return any(
@@ -325,7 +359,10 @@ class DataManager:
         with self._lock:
             database = self._read()
             users = {row["UserID"] for row in database["tables"]["user"]["rows"]}
-            resources = {row["id"] for row in database["tables"]["resource"]["rows"]}
+            resources = {
+                row["id"] for row in database["tables"]["resource"]["rows"]
+                if not row.get("Hidden", False)
+            }
             if user_id not in users or resource_id not in resources:
                 raise ValueError("Favorite must reference an existing user and resource.")
             favorites = database["tables"]["favorites"]["rows"]
@@ -345,6 +382,16 @@ class DataManager:
                 is_favorite = True
             self._write(database)
             return is_favorite
+
+    def remove_favorite(self, user_id: int, resource_id: int) -> None:
+        with self._lock:
+            database = self._read()
+            favorites = database["tables"]["favorites"]["rows"]
+            favorites[:] = [
+                row for row in favorites
+                if not (row["UserID"] == user_id and row["ResourceID"] == resource_id)
+            ]
+            self._write(database)
 
     def collections_for_user(self, user_id: int) -> list[dict[str, Any]]:
         collections = [row for row in self.rows("collection") if row.get("UserId") == user_id]
@@ -386,7 +433,10 @@ class DataManager:
             ), None)
             if collection is None:
                 raise ValueError("Collection does not belong to this user.")
-            if resource_id not in {row["id"] for row in database["tables"]["resource"]["rows"]}:
+            if resource_id not in {
+                row["id"] for row in database["tables"]["resource"]["rows"]
+                if not row.get("Hidden", False)
+            }:
                 raise ValueError("Resource does not exist.")
             members = database["tables"]["collection_member"]["rows"]
             if any(row["CollectionID"] == collection_id and row["ResourceID"] == resource_id for row in members):

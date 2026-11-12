@@ -4,8 +4,12 @@ CREATE TABLE `kliros_manager`.`user` (
 	`Name` varchar(255) NOT NULL,
 	`Email` varchar(255) NOT NULL,
 	`JoinedAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	`UserType` enum('regular', 'moderator', 'admin') NOT NULL DEFAULT 'regular',
 	PRIMARY KEY (`UserID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+INSERT INTO `kliros_manager`.`user` (`Name`, `Email`, `UserType`) VALUES
+	('Local Owner', 'local@kliros.invalid', 'admin');
 
 CREATE TABLE `kliros_manager`.`federated_credential` (
     `RowID` int NOT NULL AUTO_INCREMENT,

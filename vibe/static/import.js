@@ -175,13 +175,13 @@ function showMatchResults(payload) {
   for (const match of matches) {
     const card = document.createElement("article");
     card.className = "match-card";
-    const title = document.createElement("a");
-    title.className = "match-title";
-    title.href = match.detail_url;
-    title.textContent = match.title || match.original_name || `Resource ${match.resource_id}`;
-    const originalName = document.createElement("p");
-    originalName.className = "match-original-name";
-    originalName.textContent = match.original_name || "";
+    const matchTitle = match.title || match.original_name || `Resource ${match.resource_id}`;
+    const title = createWorkCard({
+      title: matchTitle,
+      OriginalName: match.original_name,
+      detail_url: match.detail_url,
+      thumbnail_url: match.preview_url,
+    });
     const metrics = document.createElement("p");
     metrics.className = "match-metrics";
     const metricParts = [];
@@ -195,7 +195,7 @@ function showMatchResults(payload) {
     previewButton.className = "match-preview-button secondary outline";
     previewButton.textContent = "Preview";
     previewButton.addEventListener("click", () => {
-      document.querySelector("#duplicate-preview-title").textContent = title.textContent;
+      document.querySelector("#duplicate-preview-title").textContent = matchTitle;
       const previewImage = document.querySelector("#duplicate-preview-image");
       previewImage.src = match.preview_url;
       duplicatePreviewDialog.showModal();
@@ -206,7 +206,7 @@ function showMatchResults(payload) {
     sameButton.type = "button";
     sameButton.textContent = "Same work";
     sameButton.addEventListener("click", () => {
-      confirmation.textContent = `Marked as the same work as “${title.textContent}”. Both records remain separate for now.`;
+      confirmation.textContent = `Marked as the same work as “${matchTitle}”. Both records remain separate for now.`;
       confirmation.hidden = false;
       sameButton.textContent = "Confirmed";
       sameButton.disabled = true;
@@ -218,7 +218,7 @@ function showMatchResults(payload) {
     differentButton.className = "secondary outline";
     differentButton.textContent = "Different work";
     differentButton.addEventListener("click", () => {
-      confirmation.textContent = `Marked “${title.textContent}” as a different work.`;
+      confirmation.textContent = `Marked “${matchTitle}” as a different work.`;
       confirmation.hidden = false;
       differentButton.textContent = "Marked different";
       differentButton.disabled = true;
@@ -226,7 +226,7 @@ function showMatchResults(payload) {
       card.dataset.decision = "different";
     });
     decisions.append(sameButton, differentButton);
-    card.append(title, originalName, metrics, previewButton, decisions);
+    card.append(title, metrics, previewButton, decisions);
     rankedMatches.append(card);
   }
 }
