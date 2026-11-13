@@ -53,3 +53,10 @@ Many church people are less than enthused about the internet and large corporati
 * Maybe support the sale and purchase of scores…?
 
 [Potential Frameworks](potentialLibraries.md)
+
+## Possible Names
+
+Kliros Manager
+OpenKliros
+Kliros Commons
+OneAccord

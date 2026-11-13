@@ -18,7 +18,7 @@ Then launch the app with the root script:
 .\run.ps1
 ```
 
-The script locates Tesseract (including the standard per-user Windows install), sets `TESSERACT_CMD`, and starts Flask. Open `http://127.0.0.1:5000`. On macOS or Linux, activate with `source .venv/bin/activate` and run `python app.py` instead.
+The script locates Tesseract (including standard per-user and system-wide Windows installs), sets `TESSERACT_CMD`, and starts Flask. Open `http://127.0.0.1:5000`. On macOS or Linux, activate with `source .venv/bin/activate` and run `python app.py` instead.
 
 ## Cross-origin API access
 
@@ -31,7 +31,7 @@ The frontend must send cookies (`credentials: "include"` in fetch). A different 
 - Python 3.10 or later.
 - The packages in `requirements.txt`. PyMuPDF renders PDF pages locally, so Poppler is not required.
 - PDFs with an embedded text layer use page body text only; PDF document metadata is ignored. Image-only PDFs fall back to Tesseract OCR.
-- The Tesseract OCR executable installed separately. `run.ps1` finds the standard per-user Windows installation or a `PATH` installation; set `TESSERACT_CMD` if it is elsewhere.
+- The Tesseract OCR executable installed separately. `run.ps1` finds standard per-user and system-wide Windows installations or a `PATH` installation; set `TESSERACT_CMD` if it is elsewhere.
   `winget install UB-Mannheim.TesseractOCR`
 - Permission to write the configured upload folder, `settings.json`, and `db.json`.
 

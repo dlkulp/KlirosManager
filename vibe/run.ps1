@@ -20,6 +20,13 @@ if (-not $tesseract -and $env:LOCALAPPDATA) {
     }
 }
 
+if (-not $tesseract -and $env:ProgramFiles) {
+    $systemInstall = Join-Path $env:ProgramFiles "Tesseract-OCR\tesseract.exe"
+    if (Test-Path -LiteralPath $systemInstall) {
+        $tesseract = $systemInstall
+    }
+}
+
 if (-not $tesseract) {
     $pathCommand = Get-Command "tesseract.exe" -ErrorAction SilentlyContinue
     if ($pathCommand) {
