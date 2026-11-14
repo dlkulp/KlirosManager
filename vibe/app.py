@@ -284,6 +284,17 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             "facets": facets,
         })
 
+    @app.get("/api/site/metadata")
+    def site_metadata():
+        return jsonify({
+            "metadata_fields": [
+                {
+                    **definition,
+                }
+                for definition in data_manager.metadata_definitions()
+            ],
+        })
+
     @app.get("/profile")
     def profile():
         return send_file(PROJECT_ROOT / "templates" / "profile.html", mimetype="text/html")
@@ -413,45 +424,26 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         uploader = uploader or {"Name": "Unknown user", "JoinedAt": ""}
         uploader_initials = "".join(word[0] for word in uploader["Name"].split()[:2]).upper()
         signed_in_user_id = session.get("user_id")
-        user_collections = data_manager.collections_for_user(signed_in_user_id) if isinstance(signed_in_user_id, int) else []
-        metadata_details = [
-            (name, json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value)
-            for name, value in metadata.items()
-            if name != "OCR"
-        ]
-        metadata_fields = []
-        for definition in data_manager.metadata_definitions():
-            value = metadata.get(definition["Name"], "")
-            if isinstance(value, dict):
-                value = value.get("value", "")
-            metadata_fields.append({**definition, "value": "" if value is None else value})
-        metadata_summary = [
-            {
-                "name": field["Name"],
-                "value": ", ".join(str(item) for item in field["value"])
-                if isinstance(field["value"], list)
-                else str(field["value"]),
-            }
-            for field in metadata_fields
-            if field["value"] is not None and str(field["value"]).strip()
-        ]
+        # Return metadata excluding OCR and FileHash (system fields), converted to strings
+        metadata_values = {}
+        for name, value in metadata.items():
+            if name not in ("OCR", "FileHash"):
+                if isinstance(value, dict) and "value" in value:
+                    metadata_values[name] = str(value["value"])
+                elif isinstance(value, list):
+                    metadata_values[name] = json.dumps(value)
+                elif value is None:
+                    metadata_values[name] = ""
+                else:
+                    metadata_values[name] = str(value)
         return jsonify({
             "resource": _resource_view(resource, url_for),
             "original_name": resource.get("OriginalName") or source_path.name,
             "uploader": uploader,
             "uploader_initials": uploader_initials,
-            "uploader_resource_count": data_manager.count_resources_for_user(resource["UserID"]),
             "is_favorite": data_manager.is_favorite(signed_in_user_id, resource_id) if isinstance(signed_in_user_id, int) else False,
-            "is_logged_in": is_logged_in(),
-            "user_collections": user_collections,
-            "resource_collection_ids": data_manager.collection_resource_ids(
-                [collection["id"] for collection in user_collections], resource_id
-            ),
             "ocr": metadata.get("OCR") or {},
-            "metadata_details": metadata_details,
-            "metadata_fields": metadata_fields,
-            "metadata_summary": metadata_summary,
-            "is_pdf": source_path.suffix.lower() == ".pdf",
+            "metadata": metadata_values,
             "file_url": f"/api/library/{resource_id}/file",
             "download_url": f"/api/library/{resource_id}/download",
         })
@@ -739,11 +731,6 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
         inferred_metadata = result.get("inferred_metadata", {})
         stored_metadata = {
-            "OCR": {
-                "text": result.get("ocr", {}).get("text", ""),
-                "status": result.get("ocr", {}).get("status", "unavailable"),
-                "message": result.get("ocr", {}).get("message", ""),
-            },
             **inferred_metadata,
         }
         uploaded_file.stream.seek(0)
@@ -808,13 +795,6 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                 "visual_hash": result.get("visual_hash"),
                 "ocr_text": result.get("ocr", {}).get("text", ""),
             },
-            "metadata_fields": [
-                {
-                    **definition,
-                    "value": inferred_metadata.get(definition["Name"], {}).get("value", ""),
-                }
-                for definition in data_manager.metadata_definitions()
-            ],
             "errors": result.get("errors", []),
         }
         return jsonify(response), 200

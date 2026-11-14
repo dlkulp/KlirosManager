@@ -392,6 +392,6 @@ class FileProcessing:
                 else:
                     found = re.search(rf"(?<!\w){re.escape(option_text)}(?!\w)", normalized_text)
                 if found:
-                    inferred[definition["Name"]] = {"value": option, "source": "ocr", "reviewed": False}
+                    inferred[definition["Name"]] = {"value": str(option), "source": "ocr", "reviewed": False}
                     break
         return inferred

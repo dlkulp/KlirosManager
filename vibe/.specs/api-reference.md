@@ -27,6 +27,7 @@ All successful responses below use HTTP 200. `Auth` means a signed-in cookie ses
 | GET | `/api/library` | No | None | `LibraryResponseDto` |
 | GET | `/api/search` | No | `SearchRequestDto` as query parameters | `SearchResponseDto` |
 | GET | `/api/profile` | Yes | None | `ProfileResponseDto` |
+| GET | `/api/site/metadata` | No | None | `SiteMetadataResponseDto` |
 | GET | `/api/library/{id}` | No | Resource ID | `ResourceDetailResponseDto` |
 | PATCH | `/api/library/{id}` | Yes | `UpdateResourceRequestDto` JSON | `UpdateResourceResponseDto` |
 | DELETE | `/api/library/{id}` | Yes | Resource ID; no body | `DeleteResourceResponseDto` |
@@ -57,14 +58,15 @@ Full TypeScript declarations are in [api-client.ts](api-client.ts).
 | `SearchResponseDto` | `results`, `total`, `page`, `page_size`, `page_count`, `facets`; result resources add `uploaded_at` and `popularity` |
 | `CollectionDto` | `id`, `Name`, `Public`, `UserId` |
 | `ProfileResponseDto` | `user`, `initials`, `uploads`, `favorites`, `collections`; each collection adds `items: ResourceDto[]` |
-| `MetadataDefinitionDto` | `id`, `Name`, `Type`, `Options`, `Core`, `Extracted`, `Searchable`, optional `Required` |
-| `MetadataFieldDto` | Metadata definition plus current or inferred `value` |
-| `ResourceDetailResponseDto` | `resource`, `original_name`, `uploader`, `uploader_initials`, `uploader_resource_count`, `is_favorite`, `is_logged_in`, `user_collections`, `resource_collection_ids`, `ocr`, `metadata_details`, `metadata_fields`, `metadata_summary`, `is_pdf`, `file_url`, `download_url` |
+| `SiteMetadataResponseDto` | `metadata_fields: MetadataDefinitionDto[]` |
+| `MetadataDefinitionDto` | `id`, `Name`, `Type`, `Options` (string array or null), `Core`, `Extracted`, `Searchable`, optional `Required` |
+| `MetadataFieldDto` | Metadata definition plus `value: string` |
+| `ResourceDetailResponseDto` | `resource`, `original_name`, `uploader`, `uploader_initials`, `is_favorite`, `ocr`, `metadata`, `file_url`, `download_url` |
 | `OcrDto` | `status` (`success`, `unavailable`, `error`), `text`, `message`; detail's `ocr` may be empty when absent |
 | `RankedMatchDto` | `resource_id`, `title`, `original_name`, `composer`, nullable `hamming_distance`, `title_similarity`, `composer_similarity`, numeric `confidence`, `detail_url`, `preview_url` |
 | `BinaryResponseDto` | Client-side envelope: `body: Blob`, `content_type`, `content_disposition`; these are not server JSON fields |
 
-Nullable resource fields follow the local database schema; thumbnail URLs/srcset are null when the source file is absent. `Source` exposes a backend-local path, not a URL clients should fetch. `MetaData` may contain primitives, arrays, `{value, source, reviewed}` objects, OCR, and hash data. Detail `metadata_details` is an array of `[name, value]` pairs; object/array values are JSON-encoded strings. `metadata_summary` contains `{name, value}` strings for defined nonempty metadata fields. Unknown uploaders fall back to `{Name: "Unknown user", JoinedAt: ""}`.
+Nullable resource fields follow the local database schema; thumbnail URLs/srcset are null when the source file is absent. `Source` exposes a backend-local path, not a URL clients should fetch. `MetaData` in resource list may contain primitives, arrays, `{value, source, reviewed}` objects, OCR, and hash data. Detail `metadata` is a flat object with string values. Unknown uploaders fall back to `{Name: "Unknown user", JoinedAt: ""}`. File type detection (PDF vs image) is determined client-side by checking the file extension.
 
 ## Search
 
@@ -100,6 +102,29 @@ The SQL and JSON schemas use a `UserType` enum with `regular`, `moderator`, and 
 
 `PATCH /api/admin/users/{userId}/type` accepts `{"user_type":"moderator"}` or `{"user_type":"regular"}` and returns `{ "user_id": number, "user_type": "regular" | "moderator" }`. Only a signed-in admin can call it. Anonymous requests return 401, signed-in non-admin requests return 403, unknown users return 404, and invalid input returns 400. Admin users cannot be demoted through this endpoint, and the endpoint cannot grant admin status.
 
+## Metadata Definitions
+
+`GET /api/site/metadata` returns the centralized metadata field definitions available for all resources:
+
+```json
+{
+  "metadata_fields": [
+    {
+      "id": 1,
+      "Name": "Service",
+      "Type": "select",
+      "Options": ["Vespers", "Matins", "Divine Liturgy"],
+      "Core": true,
+      "Extracted": false,
+      "Searchable": true,
+      "Required": false
+    }
+  ]
+}
+```
+
+All `Options` are strings or null. The `Type` field describes the expected value kind but is not enforced by the backend; the client determines how to display and validate metadata. `Core`, `Extracted`, and `Searchable` fields indicate the nature of each definition; `Required` is optional.
+
 ## Import and Metadata Update
 
 Import-check is a **write operation**, not a preview. It validates and compares the file, then stores a resource immediately if no duplicate/rejection is found. Review/save is a subsequent PATCH; there is no transaction spanning both requests.
@@ -108,12 +133,12 @@ Send multipart field `file` with its original filename. Extensions: `.pdf`, `.pn
 
 | Status | HTTP | Response |
 | --- | --- | --- |
-| `created` | 200 | `ImportCreatedResponseDto`: `upload`, `ocr`, nullable `visual_hash`, initial `matches`, `inferred_metadata`, `debug`, `metadata_fields`, `errors` |
+| `created` | 200 | `ImportCreatedResponseDto`: `upload`, `ocr`, nullable `visual_hash`, initial `matches`, `inferred_metadata`, `debug`, `errors` |
 | `duplicate` | 200 | `ImportDuplicateResponseDto`: `match_type` (`sha256` exact file or `phash` identical first-page perceptual hash), `duplicate`, `debug`; no new copy stored |
 | `rejected` | 422 | `ImportRejectedResponseDto`: `reason: "not_sheet_music"`, `error`, `debug`, `reference_check` (distance, reference image, threshold); no new resource stored |
 | `error` | 400/401/413/415/500/503 | `{status: "error", error: string}`; thrown as `ApiError` by the client |
 
-`upload` contains `resource_id`, `stored_name`, `original_name`, `title`, `source`, thumbnail URLs/srcset, and `detail_url`. `debug` contains `file_hash`, nullable `visual_hash`, and `ocr_text`. Initial import matches have only `resource_id`, `original_name`, `visual_hash`, and `hamming_distance`; they are **not** `RankedMatchDto` and do not contain preview/detail URLs. Inferred metadata values have `value`, `source: "ocr"`, and `reviewed: false`. A created response may contain non-fatal OCR/thumbnail errors; do not treat `errors.length > 0` as a failed import.
+`upload` contains `resource_id`, `stored_name`, `original_name`, `title`, `source`, thumbnail URLs/srcset, and `detail_url`. `debug` contains `file_hash`, nullable `visual_hash`, and `ocr_text`. Initial import matches have only `resource_id`, `original_name`, `visual_hash`, and `hamming_distance`; they are **not** `RankedMatchDto` and do not contain preview/detail URLs. Inferred metadata values have `value: string`, `source: "ocr"`, and `reviewed: false`. A created response may contain non-fatal OCR/thumbnail errors; do not treat `errors.length > 0` as a failed import.
 
 PATCH `/api/library/{id}` accepts:
 

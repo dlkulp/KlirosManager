@@ -17,6 +17,9 @@ const saveError = document.querySelector("#save-error");
 const saveStatus = document.querySelector("#save-status");
 let resourceId = null;
 let detailUrl = null;
+let metadataDefinitions = [];
+
+loadMetadataDefinitions();
 
 fetch("/api/session")
   .then((response) => response.json())
@@ -30,6 +33,17 @@ fetch("/api/session")
   .catch(() => {
     document.querySelector("#import-login-required").hidden = false;
   });
+
+async function loadMetadataDefinitions() {
+  try {
+    const response = await fetch("/api/site/metadata");
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Metadata definitions could not be loaded.");
+    metadataDefinitions = payload.metadata_fields || [];
+  } catch (error) {
+    console.error("Failed to load metadata definitions:", error);
+  }
+}
 
 fileInput.addEventListener("change", () => {
   selectedFile.textContent = fileInput.files.length ? fileInput.files[0].name : "No file selected";
@@ -132,9 +146,9 @@ function showReview(payload) {
   }
 
   const inferred = payload.inferred_metadata || {};
-  const fields = payload.metadata_fields.map((field) => ({
-    ...field,
-    value: inferred[field.Name]?.value ?? field.value ?? "",
+  const fields = metadataDefinitions.map((definition) => ({
+    ...definition,
+    value: inferred[definition.Name]?.value ?? definition.value ?? "",
   }));
   const primary = [];
   const additional = [];

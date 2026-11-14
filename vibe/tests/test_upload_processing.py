@@ -415,7 +415,7 @@ class UploadRouteTests(unittest.TestCase):
         self.assertIn('id="edit-metadata-button"', detail)
         self.assertIn('id="metadata-edit-form"', detail)
         self.assertEqual(detail_payload["resource"]["title"], "Reviewed title")
-        self.assertEqual(detail_payload["metadata_fields"][0]["value"], "Test Composer")
+        self.assertEqual(detail_payload["metadata"]["Composer"], "Test Composer")
 
         completion = self.client.patch(
             f"/library/{unrelated['id']}",
@@ -443,8 +443,7 @@ class UploadRouteTests(unittest.TestCase):
         self.assertIn("Questionable", detail)
         self.assertIn("Copyright", detail)
         self.assertEqual(payload["uploader"]["Name"], "Local Owner")
-        self.assertEqual(payload["uploader_resource_count"], 1)
-        self.assertEqual(payload["metadata_summary"], [])
+        self.assertEqual(payload["metadata"], {})
         self.assertEqual(self.client.post(f"/library/{resource['id']}/favorite").status_code, 401)
 
         login = self.client.post("/login")
@@ -703,7 +702,7 @@ class UploadRouteTests(unittest.TestCase):
         detail_payload = self.client.get(f"/api/library/{resource_id}").get_json()
         self.assertIn('id="original-score"', detail_html)
         self.assertEqual(detail_payload["resource"]["title"], "Work 2")
-        self.assertEqual(detail_payload["metadata_summary"][0]["value"], "Byzantine")
+        self.assertEqual(detail_payload["metadata"]["Style"], "Byzantine")
         self.assertEqual(detail_payload["file_url"], f"/api/library/{resource_id}/file")
 
         original = self.client.get(f"/library/{resource_id}/file")
@@ -862,10 +861,10 @@ class UploadRouteTests(unittest.TestCase):
         ))
         self.assertIn('id="delete-resource-form"', detail)
         self.assertIn('id="edit-metadata-button"', detail)
-        self.assertFalse(self.client.get(f"/api/library/{resource['id']}").get_json()["is_logged_in"])
+        session_response = self.client.get("/api/session").get_json()
+        self.assertFalse(session_response["logged_in"])
         detail_payload = self.client.get(f"/api/library/{resource['id']}").get_json()
         self.assertEqual(detail_payload["download_url"], f"/api/library/{resource['id']}/download")
-        self.assertFalse(detail_payload["is_logged_in"])
 
         self.login_demo()
         self.assertEqual(self.client.get("/import").status_code, 200)
@@ -1049,7 +1048,7 @@ class FileProcessingTests(unittest.TestCase):
             [{"Name": "Tone Set", "Type": "string", "Options": ["Byzantine"]},
              {"Name": "Tone", "Type": "number", "Options": [1, 2, 3, 4]}],
         )
-        self.assertEqual(inferred["Tone"]["value"], 4)
+        self.assertEqual(inferred["Tone"]["value"], "4")
         self.assertFalse(inferred["Tone"]["reviewed"])
 
 

@@ -1,5 +1,4 @@
-export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
-export type MetadataDto = Record<string, JsonValue>;
+export type MetadataDto = Record<string, string>;
 
 export interface UserDto {
   UserID: number;
@@ -82,13 +81,16 @@ export interface MetadataDefinitionDto {
   id: number;
   Name: string;
   Type: string;
-  Options: JsonValue[] | null;
+  Options: string[] | null;
   Core: boolean | null;
   Extracted: boolean | null;
   Searchable: boolean | null;
   Required?: boolean;
 }
-export interface MetadataFieldDto extends MetadataDefinitionDto { value: JsonValue }
+export interface MetadataFieldDto extends MetadataDefinitionDto { value: string }
+export interface SiteMetadataResponseDto {
+  metadata_fields: MetadataDefinitionDto[];
+}
 export interface OcrDto {
   status: "success" | "unavailable" | "error";
   text: string;
@@ -105,16 +107,9 @@ export interface ResourceDetailResponseDto {
   original_name: string;
   uploader: UploaderDto;
   uploader_initials: string;
-  uploader_resource_count: number;
   is_favorite: boolean;
-  is_logged_in: boolean;
-  user_collections: CollectionDto[];
-  resource_collection_ids: number[];
   ocr: Partial<OcrDto>;
-  metadata_details: [string, JsonValue][];
-  metadata_fields: MetadataFieldDto[];
-  metadata_summary: { name: string; value: string }[];
-  is_pdf: boolean;
+  metadata: MetadataDto;
   file_url: string;
   download_url: string;
 }
@@ -177,7 +172,7 @@ export interface ImportMatchDto {
   hamming_distance: number;
 }
 export interface InferredMetadataValueDto {
-  value: JsonValue;
+  value: string;
   source: "ocr";
   reviewed: false;
 }
@@ -199,7 +194,6 @@ export interface ImportCreatedResponseDto {
   matches: ImportMatchDto[];
   inferred_metadata: Record<string, InferredMetadataValueDto>;
   debug: ImportDebugDto;
-  metadata_fields: MetadataFieldDto[];
   errors: string[];
 }
 export interface ImportDuplicateResponseDto {

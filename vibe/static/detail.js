@@ -17,8 +17,33 @@ const reportDialog = document.querySelector("#report-dialog");
 const reportForm = document.querySelector("#report-form");
 const reportThanks = document.querySelector("#report-thanks");
 let detail = null;
+let metadataDefinitions = [];
+let session = null;
 
+loadMetadataDefinitions();
+loadSession();
 loadDetail();
+
+async function loadMetadataDefinitions() {
+  try {
+    const response = await fetch("/api/site/metadata");
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Metadata definitions could not be loaded.");
+    metadataDefinitions = payload.metadata_fields || [];
+  } catch (error) {
+    console.error("Failed to load metadata definitions:", error);
+  }
+}
+
+async function loadSession() {
+  try {
+    const response = await fetch("/api/session");
+    session = await response.json();
+  } catch (error) {
+    console.error("Failed to load session:", error);
+    session = { logged_in: false };
+  }
+}
 
 async function loadDetail() {
   try {
@@ -43,7 +68,6 @@ function renderDetail(payload) {
   const initials = document.querySelector("#uploader-initials");
   initials.textContent = payload.uploader_initials;
   document.querySelector("#uploader-name").textContent = payload.uploader.Name;
-  document.querySelector("#uploader-count").textContent = `${payload.uploader_resource_count} uploaded ${payload.uploader_resource_count === 1 ? "work" : "works"}`;
   const joined = document.querySelector("#uploader-joined");
   joined.dateTime = payload.uploader.JoinedAt || "";
   joined.textContent = `Joined ${payload.uploader.JoinedAt || "date unavailable"}`;
@@ -57,19 +81,24 @@ function renderDetail(payload) {
 function renderMetadata(payload) {
   const summary = document.querySelector("#metadata-summary");
   summary.replaceChildren();
-  for (const item of payload.metadata_summary || []) {
+  const metadata = payload.metadata || {};
+  
+  // Render summary (non-empty values only)
+  for (const [name, value] of Object.entries(metadata)) {
+    if (value === null || value === undefined || String(value).trim() === "") continue;
     const row = document.createElement("div");
     const label = document.createElement("dt");
-    label.textContent = item.name;
-    const value = document.createElement("dd");
-    value.textContent = item.value;
-    row.append(label, value);
+    label.textContent = name;
+    const valueEl = document.createElement("dd");
+    valueEl.textContent = typeof value === "string" ? value : JSON.stringify(value);
+    row.append(label, valueEl);
     summary.append(row);
   }
   document.querySelector("#metadata-summary-empty").hidden = summary.children.length > 0;
 
+  // Render detailed grid (all values)
   metadataGrid.replaceChildren();
-  for (const [name, value] of payload.metadata_details || []) {
+  for (const [name, value] of Object.entries(metadata)) {
     const label = document.createElement("dt");
     label.textContent = name;
     const detailValue = document.createElement("dd");
@@ -79,9 +108,14 @@ function renderMetadata(payload) {
   document.querySelector("#metadata-empty").hidden = metadataGrid.children.length > 0;
   document.querySelector("#detail-work-title").value = resourceTitle(payload.resource);
   metadataEditForm.dataset.endpoint = `/api/library/${payload.resource.id}`;
-  if (payload.is_logged_in) {
+  if (session?.logged_in) {
     editMetadataButton.hidden = false;
-    renderMetadataFields(payload.metadata_fields || []);
+    // Convert metadata object to array of {Name, value} for renderMetadataFields
+    const metadataArray = Object.entries(metadata).map(([name, value]) => ({
+      Name: name,
+      value: typeof value === "string" ? value : JSON.stringify(value),
+    }));
+    renderMetadataFields(metadataArray);
   }
 }
 
@@ -92,7 +126,12 @@ function resourceTitle(resource) {
 function renderOriginal(payload) {
   const viewer = document.querySelector("#original-score");
   viewer.replaceChildren();
-  if (payload.is_pdf) {
+  
+  // Determine if the file is a PDF based on the file extension
+  const fileName = payload.original_name || "";
+  const isPdf = fileName.toLowerCase().endsWith(".pdf");
+  
+  if (isPdf) {
     const frame = document.createElement("iframe");
     frame.src = `${payload.file_url}#view=FitH`;
     frame.title = `${payload.resource.title} PDF`;
@@ -115,7 +154,7 @@ function renderActions(payload) {
   favoriteButton.dataset.endpoint = `/api/library/${payload.resource.id}/favorite`;
   updateFavoriteButton(payload.is_favorite);
   collectionDialog.dataset.endpoint = `/api/library/${payload.resource.id}/collections`;
-  if (payload.is_logged_in) {
+  if (session?.logged_in) {
     deleteForm.hidden = false;
     fillCollections(payload.user_collections || [], payload.resource_collection_ids || []);
   } else {
@@ -254,14 +293,30 @@ deleteForm.addEventListener("submit", async (event) => {
 
 if (editMetadataButton && metadataReadMode && metadataEditForm) {
   editMetadataButton.addEventListener("click", () => {
-    renderMetadataFields(detail.metadata_fields || []);
+    // Convert metadata object to array of {Name, value} for renderMetadataFields
+    const metadata = detail.metadata || {};
+    const metadataArray = Object.entries(metadata).map(([name, value]) => ({
+      Name: name,
+      value: typeof value === "string" ? value : JSON.stringify(value),
+    }));
+    renderMetadataFields(metadataArray);
   });
 }
 
 function renderMetadataFields(fields) {
+  const valueMap = {};
+  for (const field of fields) {
+    valueMap[field.Name] = field.value;
+  }
+  
+  const mergedFields = metadataDefinitions.map((definition) => ({
+    ...definition,
+    value: valueMap[definition.Name] ?? definition.value ?? "",
+  }));
+  
   const primary = [];
   const additional = [];
-  for (const field of fields) {
+  for (const field of mergedFields) {
     if (field.Core || field.value !== "") primary.push(field);
     else additional.push(field);
   }
