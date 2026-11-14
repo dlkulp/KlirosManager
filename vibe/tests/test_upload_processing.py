@@ -886,6 +886,18 @@ class FileProcessingTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "success")
 
+    def test_tesseract_uses_standard_system_windows_install_when_env_is_unset(self):
+        import os
+        from PIL import Image
+
+        system_install = Path(os.environ.get("ProgramFiles", "")) / "Tesseract-OCR" / "tesseract.exe"
+        if not system_install.is_file():
+            self.skipTest("Standard system-wide Tesseract install is not available.")
+        with patch.dict(os.environ, {"TESSERACT_CMD": "", "LOCALAPPDATA": ""}):
+            result = FileProcessing._extract_ocr(Image.new("RGB", (160, 80), "white"))
+
+        self.assertEqual(result["status"], "success")
+
     def test_pdf_body_text_is_used_without_reading_file_metadata_or_running_ocr(self):
         import fitz
 

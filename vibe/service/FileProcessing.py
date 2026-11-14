@@ -219,6 +219,12 @@ class FileProcessing:
                 local_install = Path(local_app_data) / "Programs" / "Tesseract-OCR" / "tesseract.exe"
                 if local_install.is_file():
                     pytesseract.pytesseract.tesseract_cmd = str(local_install)
+            if not shutil.which(pytesseract.pytesseract.tesseract_cmd):
+                program_files = os.environ.get("ProgramFiles")
+                if program_files:
+                    system_install = Path(program_files) / "Tesseract-OCR" / "tesseract.exe"
+                    if system_install.is_file():
+                        pytesseract.pytesseract.tesseract_cmd = str(system_install)
         if not shutil.which(pytesseract.pytesseract.tesseract_cmd):
             return {"status": "unavailable", "text": "", "message": "Tesseract OCR was not found. Install it and add it to PATH, or set TESSERACT_CMD."}
         try:
