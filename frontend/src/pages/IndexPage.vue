@@ -8,60 +8,57 @@
     <div id="card-container" class="flex">
       <p v-if="emptyMessage">{{ emptyMessage }}</p>
       <div id="recent-works" class="fit row wrap justify-center items-start content-start">
-        <q-card
+        <q-btn flat
           v-for="(score, index) in recentWorks"
           :key="`${score.title}-${index}`"
-          class="work-card"
-        >
-          <q-card-section>
-            <img
-              :src="score.thumbnail_url"
-              :srcset="score.thumbnail_srcset || ''"
-              sizes="(max-width: 600px) 45vw, (max-width: 900px) 30vw, 300px"
-              alt="Score thumbnail"
-              loading="lazy"
-              width="232"
-              height="300" />
-          </q-card-section>
-          <q-card-section>
-            <strong>{{ score.title || score.OriginalName || "Untitled" }}</strong>
-            <p>{{ score.MetaData.Composer?.value || score.MetaData.Arranger?.value || "By Unknown" }}</p>
-          </q-card-section>
-        </q-card>
+          :to="score.detail_url">
+          <q-card>
+            <q-card-section>
+              <img
+                :src="score.thumbnail_url || ''"
+                :srcset="score.thumbnail_srcset || ''"
+                sizes="(max-width: 600px) 45vw, (max-width: 900px) 30vw, 300px"
+                alt="Score thumbnail"
+                loading="lazy"
+                width="232"
+                height="300" />
+            </q-card-section>
+            <q-card-section class="title-section">
+              <strong>{{ score.title || score.OriginalName || "Untitled" }}</strong>
+              <p text-caption class="light">{{ getMDAttribution(score.MetaData?.Composer || score.MetaData?.Arranger) }}</p>
+            </q-card-section>
+          </q-card>
+        </q-btn>
       </div>
-      <!-- <q-btn
-        class="q-mt-md"
-        color="primary"
-        to="/second"
-        label="Go to Second Page"
-        no-caps
-      /> -->
     </div>
   </q-page>
 </template>
 
-<style scoped>
+<style lang="scss" scoped>
 h1 {font-size: 3rem}
 h2 {font-size: 2rem}
-.work-card {
-  margin: 10px;
+.title-section {
+  padding-top: 0px;
+}
+.title-section p {
+  color: $grey-6
 }
 </style>
 
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import type { Score } from "@/types/score";
+import { ResourceDto, KlirosApi } from "@/types/api-client";
 
-const recentWorks = ref<Score[]>([]);
+const recentWorks = ref<ResourceDto[]>();
 const emptyMessage = ref("");
+const api = new KlirosApi();
+function getMDAttribution(metaData: any) {
+  return metaData?.value || "By Unknown";
+}
 
 onMounted(async () => {
   try {
-    const response = await fetch("/api/home");
-    if (!response.ok) throw new Error("Could not load recent works.");
-
-    const data = (await response.json()) as { recent_works?: Score[] };
-    recentWorks.value = Array.isArray(data.recent_works) ? data.recent_works : [];
+    recentWorks.value = (await api.getHome()).recent_works;
     if (recentWorks.value.length === 0) {
       emptyMessage.value = "Nothing to see here!";
     }

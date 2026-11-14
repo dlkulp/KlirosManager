@@ -21,12 +21,13 @@
     "build": "quasar build",
     "typecheck": "vue-tsc --noEmit",
     "postinstall": "quasar prepare --silent",
-	"prod": "quasar build -m pwa"
+    "prod": "quasar build -m pwa"
   },
   "dependencies": {
     "@quasar/extras": "^2.1.0",
     "quasar": "^2.35.4",
     "vue": "^3.5.22",
+    "vue-pdfz": "^1.0.3",
     "vue-router": "^5.0.6"
   },
   "devDependencies": {
