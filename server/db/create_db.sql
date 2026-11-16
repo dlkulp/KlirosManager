@@ -34,6 +34,7 @@ CREATE TABLE `kliros_manager`.`resource` (
 	`VisualHash` varchar(255), 
 	`FileHash` varchar(64),
 	`Hidden` boolean DEFAULT false,
+	`DownloadCount` int DEFAULT 0, 
 	PRIMARY KEY (`id`),
 	KEY `UserID` (`UserID`),
 	CONSTRAINT `resource_ibfk_1` FOREIGN KEY (`UserID`) REFERENCES `user` (`UserID`),

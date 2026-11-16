@@ -528,6 +528,20 @@ class UploadRouteTests(unittest.TestCase):
         self.assertFalse(data_manager.rows("collection"))
         self.assertFalse(data_manager.rows("collection_member"))
 
+    def test_profile_update_sets_display_name(self):
+        endpoint = "/api/profile"
+        self.assertEqual(self.client.patch(endpoint, json={"name": "New Name"}).status_code, 401)
+
+        self.login_demo()
+        self.assertIn(b'id="profile-name-form"', self.client.get("/profile").data)
+        self.assertEqual(self.client.patch(endpoint, json={"name": "   "}).status_code, 400)
+        self.assertEqual(self.client.patch(endpoint, json={"name": "x" * 256}).status_code, 400)
+
+        response = self.client.patch(endpoint, json={"name": "  Choir Director  "})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["user"]["Name"], "Choir Director")
+        self.assertEqual(self.client.get(endpoint).get_json()["user"]["Name"], "Choir Director")
+
     def test_profile_favorites_are_owner_scoped_and_unfavorite_is_idempotent(self):
         data_manager = self.app.extensions["data_manager"]
         database_path = self.root / "db.json"
@@ -585,11 +599,17 @@ class UploadRouteTests(unittest.TestCase):
         self.assertNotIn('"works"', page)
         self.assertNotIn('"Name": "Composer"', page)
         self.assertIn('id="search-pagination"', page)
-        initial = self.client.get("/api/search", query_string={"page_size": 24}).get_json()
+        with patch.object(data_manager, "metadata_values", wraps=data_manager.metadata_values) as metadata_values:
+            initial = self.client.get("/api/search", query_string={"page_size": 24}).get_json()
+        metadata_values.assert_not_called()
         self.assertEqual(initial["total"], 1)
         self.assertEqual(len(initial["results"]), 1)
-        self.assertIn("Service", initial["facets"])
-        self.assertNotIn("Composer", initial["facets"])
+        self.assertNotIn("facets", initial)
+        facets_response = self.client.get("/api/search/facets")
+        self.assertEqual(facets_response.status_code, 200)
+        facets = facets_response.get_json()["facets"]
+        self.assertIn("Service", facets)
+        self.assertNotIn("Composer", facets)
         text_match = self.client.get("/api/search", query_string={"q": "John Doe"}).get_json()
         self.assertEqual(text_match["total"], 1)
         self.assertEqual(text_match["results"][0]["title"], "Evening Hymn")
@@ -615,6 +635,91 @@ class UploadRouteTests(unittest.TestCase):
         self.assertEqual(first_page["total"], 26)
         self.assertEqual(len(first_page["results"]), 24)
         self.assertEqual(len(second_page["results"]), 2)
+
+    def test_search_and_detail_return_the_same_formatted_metadata(self):
+        data_manager = self.app.extensions["data_manager"]
+        cases = [
+            (
+                {
+                    "Service": {"value": "Vespers", "source": "user", "reviewed": True},
+                    "Voicing": ["SATB", "SSA"],
+                    "Parts": 4,
+                    "Reviewed": True,
+                    "Composer": None,
+                    "Arranger": {"value": None},
+                    "Custom": {"source": "user"},
+                    "OCR": {"text": "System OCR"},
+                    "FileHash": "system-hash",
+                },
+                {
+                    "Service": "Vespers",
+                    "Voicing": '["SATB", "SSA"]',
+                    "Parts": "4",
+                    "Reviewed": "True",
+                    "Composer": "",
+                    "Arranger": "None",
+                    "Custom": "{'source': 'user'}",
+                },
+            ),
+            (None, {}),
+        ]
+        for index, (metadata, expected) in enumerate(cases):
+            with self.subTest(metadata=metadata):
+                resource = data_manager.insert_resource({
+                    "OriginalName": f"metadata-view-{index}.pdf",
+                    "UserID": 1,
+                    "MetaData": metadata,
+                })
+                detail = self.client.get(f"/api/library/{resource['id']}")
+                search = self.client.get("/api/search", query_string={"q": resource["OriginalName"]})
+
+                self.assertEqual(detail.status_code, 200)
+                self.assertEqual(search.status_code, 200)
+                self.assertEqual(detail.get_json()["metadata"], expected)
+                results = search.get_json()["results"]
+                self.assertEqual(len(results), 1)
+                self.assertEqual(results[0]["metadata"], expected)
+                self.assertEqual(results[0]["MetaData"], metadata)
+
+    def test_search_facets_include_only_searchable_visible_values(self):
+        data_manager = self.app.extensions["data_manager"]
+        service_options = next(
+            definition["Options"] for definition in data_manager.metadata_definitions()
+            if definition["Name"] == "Service"
+        )
+        data_manager.insert_resource({
+            "OriginalName": "visible.pdf",
+            "UserID": 1,
+            "MetaData": {
+                "Service": {"value": ["vespers", "Choir Rehearsal", {"value": "Feast Vigil"}]},
+                "Language": "Choir Language",
+                "Composer": "Not searchable",
+            },
+        })
+        data_manager.insert_resource({
+            "OriginalName": "duplicate.pdf",
+            "UserID": 1,
+            "MetaData": {"Service": "CHOIR REHEARSAL"},
+        })
+        data_manager.insert_resource({
+            "OriginalName": "hidden.pdf",
+            "UserID": 1,
+            "Hidden": True,
+            "MetaData": {"Service": "Hidden-only service", "Language": "Hidden-only language"},
+        })
+
+        response = self.client.get("/api/search/facets")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(set(payload), {"facets"})
+        facets = payload["facets"]
+        self.assertEqual(facets["Service"], service_options + ["Choir Rehearsal", "Feast Vigil"])
+        self.assertEqual(facets["Language"][-1], "Choir Language")
+        self.assertNotIn("Hidden-only service", facets["Service"])
+        self.assertNotIn("Hidden-only language", facets["Language"])
+        self.assertNotIn("Composer", facets)
+        self.assertEqual(facets["Liturgical Date"], [])
 
     def test_page_routes_are_static_and_data_is_available_from_json_apis(self):
         for path in ("/", "/library", "/search", "/profile", "/import"):
@@ -792,7 +897,8 @@ class UploadRouteTests(unittest.TestCase):
         self.assertNotIn(hidden["id"], [row["id"] for row in home])
         self.assertEqual([row["id"] for row in library], [visible["id"]])
         self.assertEqual(search["total"], 0)
-        self.assertNotIn("Hidden-only language", self.client.get("/api/search").get_json()["facets"]["Language"])
+        facets = self.client.get("/api/search/facets").get_json()["facets"]
+        self.assertNotIn("Hidden-only language", facets["Language"])
 
         profile = self.client.get("/api/profile").get_json()
         self.assertEqual([row["id"] for row in profile["uploads"]], [visible["id"]])

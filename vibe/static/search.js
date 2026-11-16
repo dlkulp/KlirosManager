@@ -13,7 +13,20 @@ let sortOrder = sortSelect.value;
 let lastSubmittedQuery = "";
 let activeRequest = null;
 let requestSequence = 0;
-let facetsRendered = false;
+let visibleWorks = null;
+
+async function loadFacets() {
+  try {
+    const response = await fetch("/api/search/facets");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    renderFilters(payload.facets);
+    if (visibleWorks !== null) renderWorkCards(visibleWorks);
+  } catch (error) {
+    const detail = error instanceof Error ? ` ${error.message}.` : "";
+    metadataFilters.textContent = `Metadata filters could not be loaded.${detail} Reload the page to retry.`;
+  }
+}
 
 function renderFilters(facets) {
   metadataFilters.replaceChildren();
@@ -65,16 +78,13 @@ async function runSearch() {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Search failed.");
     if (sequence !== requestSequence) return;
-    if (!facetsRendered) {
-      renderFilters(payload.facets || {});
-      facetsRendered = true;
-    }
     renderResults(payload);
     lastSubmittedQuery = queryInput.value;
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") return;
     if (sequence !== requestSequence) return;
     resultsCount.textContent = error instanceof Error ? error.message : "Search failed.";
+    visibleWorks = null;
     resultsContainer.replaceChildren();
     pagination.replaceChildren();
   }
@@ -82,10 +92,15 @@ async function runSearch() {
 
 function renderResults(payload) {
   currentPage = payload.page;
-  const pageWorks = payload.results || [];
+  visibleWorks = payload.results || [];
   const firstResult = payload.total ? ((currentPage - 1) * pageSize) + 1 : 0;
   const lastResult = Math.min(currentPage * pageSize, payload.total);
   resultsCount.textContent = `Showing ${firstResult}-${lastResult} of ${payload.total} results`;
+  renderWorkCards(visibleWorks);
+  renderPagination(payload.page_count || 0);
+}
+
+function renderWorkCards(pageWorks) {
   resultsContainer.replaceChildren();
   if (pageWorks.length) {
     for (const work of pageWorks) resultsContainer.append(createWorkCard(work, searchableFieldNames));
@@ -95,7 +110,6 @@ function renderResults(payload) {
     empty.textContent = "No scores match these search criteria.";
     resultsContainer.append(empty);
   }
-  renderPagination(payload.page_count || 0);
 }
 
 function renderPagination(pageCount) {
@@ -162,4 +176,5 @@ document.querySelector("#clear-search-filters").addEventListener("click", () => 
   runSearch();
 });
 
+loadFacets();
 runSearch();

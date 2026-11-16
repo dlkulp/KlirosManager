@@ -64,7 +64,9 @@ function renderDetail(payload) {
   document.querySelector("#detail-title").textContent = resource.title;
   document.querySelector("#detail-original").textContent = payload.original_name || "";
   document.querySelector("#download-original").href = payload.download_url;
-
+  document.querySelector("#download-count-value").textContent = String(resource.DownloadCount || 0);
+  document.querySelector("#download-count").hidden = !resource.DownloadCount;
+  
   const initials = document.querySelector("#uploader-initials");
   initials.textContent = payload.uploader_initials;
   document.querySelector("#uploader-name").textContent = payload.uploader.Name;

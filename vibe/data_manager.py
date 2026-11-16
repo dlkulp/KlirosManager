@@ -44,6 +44,7 @@ TABLE_COLUMNS: dict[str, list[dict[str, Any]]] = {
         {"name": "VisualHash", "type": "varchar(255)", "nullable": True, "default": None},
         {"name": "FileHash", "type": "varchar(64)", "nullable": True, "default": None},
         {"name": "Hidden", "type": "boolean", "nullable": True, "default": False},
+        {"name": "DownloadCount", "type": "int", "nullable": True, "default": 0},
     ],
     "metadata": [
         {"name": "id", "type": "int", "nullable": False, "primary_key": True},
@@ -241,6 +242,135 @@ class DataManager:
     def metadata_definitions(self) -> list[dict[str, Any]]:
         return self.rows("metadata")
 
+    SEARCH_SORTS = ("uploaded", "popularity", "name")
+    SEARCH_PAGE_SIZES = (24, 48, 96)
+
+    @staticmethod
+    def resource_title(resource: dict[str, Any]) -> str:
+        return resource.get("DisplayName") or Path(resource.get("OriginalName") or "Untitled").stem
+
+    @classmethod
+    def metadata_values(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, dict):
+            if "value" in value:
+                return cls.metadata_values(value["value"])
+            return [item for child in value.values() for item in cls.metadata_values(child)]
+        if isinstance(value, list):
+            return [item for child in value for item in cls.metadata_values(child)]
+        text = str(value).strip()
+        return [text] if text else []
+
+    def search_facets(self) -> dict[str, list[str]]:
+        with self._lock:
+            database = self._read()
+        tables = database["tables"]
+        resources = [row for row in tables["resource"]["rows"] if not row.get("Hidden", False)]
+        facets: dict[str, list[str]] = {}
+        for definition in tables["metadata"]["rows"]:
+            if definition.get("Searchable") is not True:
+                continue
+            options = [str(option) for option in definition.get("Options") or []]
+            seen = {option.casefold() for option in options}
+            for resource in resources:
+                for value in self.metadata_values((resource.get("MetaData") or {}).get(definition["Name"])):
+                    if value.casefold() not in seen:
+                        seen.add(value.casefold())
+                        options.append(value)
+            facets[definition["Name"]] = options
+        return facets
+
+    def search_resources(
+        self,
+        query: str = "",
+        filters: dict[str, Any] | None = None,
+        sort: str = "uploaded",
+        page: int = 1,
+        page_size: int = 24,
+    ) -> dict[str, Any]:
+        """Filter, sort, and page visible resources; returns raw resource rows plus search fields."""
+        with self._lock:
+            database = self._read()
+        tables = database["tables"]
+        definitions = [
+            definition for definition in tables["metadata"]["rows"]
+            if definition.get("Searchable") is True
+        ]
+        searchable_names = {definition["Name"] for definition in definitions}
+        selected_filters = {
+            name: value.strip().casefold()
+            for name, value in (filters or {}).items()
+            if name in searchable_names and isinstance(value, str) and value.strip()
+        }
+        normalized_query = query.strip().casefold()
+        sort = sort if sort in self.SEARCH_SORTS else "uploaded"
+        page_size = page_size if page_size in self.SEARCH_PAGE_SIZES else 24
+        page = max(1, page)
+
+        resources = [row for row in tables["resource"]["rows"] if not row.get("Hidden", False)]
+        favorites_by_resource: dict[int, int] = {}
+        for favorite in tables["favorites"]["rows"]:
+            resource_id = favorite.get("ResourceID")
+            if isinstance(resource_id, int):
+                favorites_by_resource[resource_id] = favorites_by_resource.get(resource_id, 0) + 1
+
+        results = []
+        for resource in resources:
+            metadata = resource.get("MetaData") or {}
+            if normalized_query:
+                search_text = " ".join([
+                    self.resource_title(resource),
+                    str(resource.get("OriginalName") or ""),
+                    *(item for value in metadata.values() for item in self.metadata_values(value)),
+                ]).casefold()
+                if normalized_query not in search_text:
+                    continue
+            if any(
+                selected not in {value.casefold() for value in self.metadata_values(metadata.get(name))}
+                for name, selected in selected_filters.items()
+            ):
+                continue
+
+            source = resource.get("Source")
+            try:
+                uploaded_at = Path(source).stat().st_mtime if source else float(resource["id"])
+            except OSError:
+                uploaded_at = float(resource["id"])
+            download_count = resource.get("DownloadCount")
+            popularity = (
+                float(download_count)
+                if isinstance(download_count, (int, float)) and not isinstance(download_count, bool)
+                else favorites_by_resource.get(resource["id"], 0)
+            )
+            results.append({
+                "resource": copy.deepcopy(resource),
+                "uploaded_at": uploaded_at,
+                "popularity": popularity,
+            })
+
+        if sort == "name":
+            results.sort(key=lambda row: (self.resource_title(row["resource"]).casefold(), row["resource"]["id"]))
+        elif sort == "popularity":
+            results.sort(
+                key=lambda row: (row["popularity"], row["uploaded_at"], row["resource"]["id"]),
+                reverse=True,
+            )
+        else:
+            results.sort(key=lambda row: (row["uploaded_at"], row["resource"]["id"]), reverse=True)
+
+        total = len(results)
+        page_count = (total + page_size - 1) // page_size
+        page = min(page, max(page_count, 1))
+        start = (page - 1) * page_size
+        return {
+            "results": results[start:start + page_size],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "page_count": page_count,
+        }
+
     def find_resource_by_file_hash(self, file_hash: str) -> dict[str, Any] | None:
         normalized_hash = file_hash.casefold()
         with self._lock:
@@ -304,6 +434,14 @@ class DataManager:
             self._write(database)
             return copy.deepcopy(row)
 
+    def track_download(self, resource_id: int) -> None:
+        with self._lock:
+            database = self._read()
+            for row in database["tables"]["resource"]["rows"]:
+                if row["id"] == resource_id and not row.get("Hidden", False):
+                    row["DownloadCount"] = (row.get("DownloadCount") or 0) + 1
+                    self._write(database)
+                    return
     def update_resource_metadata(
         self,
         resource_id: int,
@@ -331,6 +469,19 @@ class DataManager:
 
     def get_user(self, user_id: int) -> dict[str, Any] | None:
         return next((row for row in self.rows("user") if row["UserID"] == user_id), None)
+
+    def update_user_name(self, user_id: int, name: str) -> dict[str, Any] | None:
+        normalized_name = name.strip() if isinstance(name, str) else ""
+        if not normalized_name or len(normalized_name) > 255:
+            raise ValueError("Display name must contain 1 to 255 characters.")
+        with self._lock:
+            database = self._read()
+            user = next((row for row in database["tables"]["user"]["rows"] if row["UserID"] == user_id), None)
+            if user is None:
+                return None
+            user["Name"] = normalized_name
+            self._write(database)
+            return copy.deepcopy(user)
 
     def update_user_type(self, user_id: int, user_type: str) -> dict[str, Any] | None:
         if user_type not in {"regular", "moderator"}:

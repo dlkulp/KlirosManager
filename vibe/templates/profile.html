@@ -30,6 +30,16 @@
           <h2 id="profile-name"></h2>
           <p id="profile-email"></p>
           <time id="profile-joined"></time>
+          <details class="collection-rename">
+            <summary>Edit display name</summary>
+            <form id="profile-name-form">
+              <label for="profile-name-input">Display Name</label>
+              <div class="collection-rename-controls">
+                <input id="profile-name-input" maxlength="255" required>
+                <button type="submit">Save name</button>
+              </div>
+            </form>
+          </details>
         </div>
         <dl class="profile-counts">
           <div><dt>Uploads</dt><dd id="profile-upload-count"></dd></div>

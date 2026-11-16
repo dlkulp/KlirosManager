@@ -26,7 +26,9 @@ All successful responses below use HTTP 200. `Auth` means a signed-in cookie ses
 | GET | `/api/home` | No | None | `HomeResponseDto` |
 | GET | `/api/library` | No | None | `LibraryResponseDto` |
 | GET | `/api/search` | No | `SearchRequestDto` as query parameters | `SearchResponseDto` |
+| GET | `/api/search/facets` | No | None | `SearchFacetsResponseDto` |
 | GET | `/api/profile` | Yes | None | `ProfileResponseDto` |
+| PATCH | `/api/profile` | Yes | `UpdateProfileRequestDto` JSON | `UpdateProfileResponseDto` |
 | GET | `/api/site/metadata` | No | None | `SiteMetadataResponseDto` |
 | GET | `/api/library/{id}` | No | Resource ID | `ResourceDetailResponseDto` |
 | PATCH | `/api/library/{id}` | Yes | `UpdateResourceRequestDto` JSON | `UpdateResourceResponseDto` |
@@ -55,9 +57,12 @@ Full TypeScript declarations are in [api-client.ts](api-client.ts).
 | `ResourceDto` | Visible resource fields `id`, `DisplayName`, `OriginalName`, `MetaData`, `GroupID`, `Source`, `UserID`, `Reviewed`, `Public`, `Hidden` (false/null), `VisualHash`, `FileHash`; optional `DownloadCount`; derived `title`, `thumbnail_url`, `thumbnail_srcset`, `thumbnail_sizes`, `detail_url`, `api_url` |
 | `HomeResponseDto` | `recent_works: ResourceDto[]`, latest three resource IDs first |
 | `LibraryResponseDto` | `works: ResourceDto[]`, all resources, descending ID |
-| `SearchResponseDto` | `results`, `total`, `page`, `page_size`, `page_count`, `facets`; result resources add `uploaded_at` and `popularity` |
+| `SearchResponseDto` | `results: SearchResourceDto[]`, `total`, `page`, `page_size`, `page_count` |
+| `SearchResourceDto` | `ResourceDto` plus `metadata: Record<string, string>`, `uploaded_at`, and `popularity` |
+| `SearchFacetsResponseDto` | `facets: Record<string, string[]>`, searchable metadata fields and their choices |
 | `CollectionDto` | `id`, `Name`, `Public`, `UserId` |
 | `ProfileResponseDto` | `user`, `initials`, `uploads`, `favorites`, `collections`; each collection adds `items: ResourceDto[]` |
+| `UpdateProfileResponseDto` | `user: UserDto`, the updated current user |
 | `SiteMetadataResponseDto` | `metadata_fields: MetadataDefinitionDto[]` |
 | `MetadataDefinitionDto` | `id`, `Name`, `Type`, `Options` (string array or null), `Core`, `Extracted`, `Searchable`, optional `Required` |
 | `MetadataFieldDto` | Metadata definition plus `value: string` |
@@ -66,7 +71,7 @@ Full TypeScript declarations are in [api-client.ts](api-client.ts).
 | `RankedMatchDto` | `resource_id`, `title`, `original_name`, `composer`, nullable `hamming_distance`, `title_similarity`, `composer_similarity`, numeric `confidence`, `detail_url`, `preview_url` |
 | `BinaryResponseDto` | Client-side envelope: `body: Blob`, `content_type`, `content_disposition`; these are not server JSON fields |
 
-Nullable resource fields follow the local database schema; thumbnail URLs/srcset are null when the source file is absent. `Source` exposes a backend-local path, not a URL clients should fetch. `MetaData` in resource list may contain primitives, arrays, `{value, source, reviewed}` objects, OCR, and hash data. Detail `metadata` is a flat object with string values. Unknown uploaders fall back to `{Name: "Unknown user", JoinedAt: ""}`. File type detection (PDF vs image) is determined client-side by checking the file extension.
+Nullable resource fields follow the local database schema; thumbnail URLs/srcset are null when the source file is absent. `Source` exposes a backend-local path, not a URL clients should fetch. `MetaData` in resource list may contain primitives, arrays, `{value, source, reviewed}` objects, OCR, and hash data. Detail `metadata` and each search result's `metadata` use the same flat string-valued display map, excluding `OCR` and `FileHash`. The display map unwraps `value` wrappers before string conversion, JSON-encodes top-level arrays, converts bare null to an empty string, and stringifies other values. Missing or null `MetaData` produces `{}`; the raw `MetaData` field is unchanged. Unknown uploaders fall back to `{Name: "Unknown user", JoinedAt: ""}`. File type detection (PDF vs image) is determined client-side by checking the file extension.
 
 ## Search
 
@@ -78,7 +83,9 @@ Nullable resource fields follow the local database schema; thumbnail URLs/srcset
 | `page_size` | `24` | Allowed values: 24, 48, 96; other values fall back to 24 |
 | `sort` | `uploaded` | `uploaded`, `popularity`, or `name`; unknown values fall back to `uploaded` |
 
-Malformed/non-object `filters` returns 400. Unknown/non-searchable filter names, non-string values, and blank values are ignored. If either numeric pagination parameter is not an integer, both reset to their defaults. Facets include only definitions with `Searchable: true`; options retain definition order and append distinct stored values. Facets cover the whole library, not just the filtered page; some can be empty.
+Malformed/non-object `filters` returns 400. Unknown/non-searchable filter names, non-string values, and blank values are ignored. If either numeric pagination parameter is not an integer, both reset to their defaults.
+
+Fetch `GET /api/search/facets` separately for metadata filter choices; `/api/search` does not return or compute facets. Facets include only definitions with `Searchable: true`; configured options retain their order, followed by distinct stored values from visible resources, deduplicated case-insensitively against existing choices. Facets cover the whole visible library, not just the filtered page; some can be empty.
 
 Upload sorting uses source-file modification time in epoch seconds, falling back to resource ID. Popularity uses numeric download count when present, otherwise favorites count. Name sorting is ascending/case-insensitive; popularity/upload sorts are descending. An empty result has `total: 0`, `page_count: 0`, `page: 1`, and `results: []`.
 
@@ -86,6 +93,7 @@ Upload sorting uses source-file modification time in epoch seconds, falling back
 
 `GET /api/profile` returns only the current user's uploads, favorites, and owned collections. Favorites sort by `FavoritedAt` descending; collections sort by name; collection items sort by membership ID. The profile payload omits favorite timestamps and collection-member order/annotation fields.
 
+- Profile PATCH uses `{name}` to set the current user's display name and returns `{user: UserDto}`. A trimmed nonempty name of at most 255 characters is required. Invalid names return 400; logged-out requests return 401; a missing current user returns 404.
 - Favorite POST toggles and returns `{is_favorite: boolean}`. It is not safe to blindly retry.
 - Favorite DELETE is idempotent and returns `{is_favorite: false}`. It removes only the current user's favorite, not the score or other users' favorites.
 - Collection POST either uses `{collection_id, action?: "add" | "remove"}` or creates and populates a new collection with `{new_collection_name, action?: "add"}`. Default action is `add`; new collections are private.
@@ -193,6 +201,7 @@ import { ApiError, KlirosApi } from "./api-client";
 
 const api = new KlirosApi({ baseUrl: "http://127.0.0.1:5004" });
 await api.login();
+const { facets } = await api.getSearchFacets();
 const page = await api.search({ q: "hymn", filters: { Service: "Vespers" }, page_size: 24 });
 const profile = await api.getProfile();
 if (profile.favorites.length) await api.unfavorite(profile.favorites[0].id);

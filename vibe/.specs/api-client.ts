@@ -50,6 +50,7 @@ export interface SearchRequestDto {
   sort?: SearchSort;
 }
 export interface SearchResourceDto extends ResourceDto {
+  metadata: MetadataDto;
   uploaded_at: number;
   popularity: number;
 }
@@ -59,8 +60,8 @@ export interface SearchResponseDto {
   page: number;
   page_size: SearchPageSize;
   page_count: number;
-  facets: Record<string, string[]>;
 }
+export interface SearchFacetsResponseDto { facets: Record<string, string[]> }
 
 export interface CollectionDto {
   id: number;
@@ -76,6 +77,8 @@ export interface ProfileResponseDto {
   favorites: ResourceDto[];
   collections: ProfileCollectionDto[];
 }
+export interface UpdateProfileRequestDto { name: string }
+export interface UpdateProfileResponseDto { user: UserDto }
 
 export interface MetadataDefinitionDto {
   id: number;
@@ -296,8 +299,14 @@ export class KlirosApi {
     if (request.sort !== undefined) query.set("sort", request.sort);
     return this.json(`/api/search?${query}`, options);
   }
+  getSearchFacets(options: ApiRequestOptions = {}): Promise<SearchFacetsResponseDto> {
+    return this.json("/api/search/facets", options);
+  }
   getProfile(options: ApiRequestOptions = {}): Promise<ProfileResponseDto> {
     return this.json("/api/profile", options);
+  }
+  updateProfile(request: UpdateProfileRequestDto, options: ApiRequestOptions = {}): Promise<UpdateProfileResponseDto> {
+    return this.json("/api/profile", this.jsonBody(request, "PATCH", options));
   }
   updateUserType(userId: number, request: UpdateUserTypeRequestDto, options: ApiRequestOptions = {}): Promise<UpdateUserTypeResponseDto> {
     return this.json(`/api/admin/users/${userId}/type`, this.jsonBody(request, "PATCH", options));

@@ -57,7 +57,7 @@ Relative paths resolve from this project directory; absolute paths are also acce
 
 ## API
 
-Browser routes `/`, `/library`, `/search`, `/profile`, `/import`, and `/library/<id>` serve static HTML shells. Page data is provided by JSON APIs: `GET /api/session`, `/api/home`, `/api/library`, `/api/library/<id>`, `/api/profile`, and `/api/search` (query, `filters`, `page`, `page_size`, and `sort`). Authentication is exposed through `POST /api/login` and `/api/logout`.
+Browser routes `/`, `/library`, `/search`, `/profile`, `/import`, and `/library/<id>` serve static HTML shells. Page data is provided by JSON APIs: `GET /api/session`, `/api/home`, `/api/library`, `/api/library/<id>`, `/api/profile`, `/api/search` (query, `filters`, `page`, `page_size`, and `sort`), and `/api/search/facets` (metadata filter choices). Authentication is exposed through `POST /api/login` and `/api/logout`.
 
 Import, metadata updates, favorites, collections, and deletes are API operations. `POST /api/library/import/check` accepts multipart file data and returns the upload, OCR, and metadata-review payload; `PATCH /api/library/<id>` updates metadata and returns possible matches. `POST /api/library/<id>/favorite` and `/collections` manage the signed-in user's data, while `DELETE /api/library/<id>` soft-deletes a work by setting `Hidden`. Hidden works are omitted from lists, search, profile collections, detail pages, and media endpoints; their files and relationships are retained. The `/import` shell checks `/api/session` and hides its form for guests; write APIs enforce login. Collection management is owner-scoped regardless of `Public`; public visibility and subscriptions are future work.
 

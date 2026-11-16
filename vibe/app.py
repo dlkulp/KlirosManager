@@ -166,123 +166,41 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
     @app.get("/api/search")
     def search_api():
-        definitions = [
-            definition for definition in data_manager.metadata_definitions()
-            if definition.get("Searchable") is True
-        ]
-        searchable_names = {definition["Name"] for definition in definitions}
         try:
-            requested_filters = json.loads(request.args.get("filters", "{}"))
+            filters = json.loads(request.args.get("filters", "{}"))
         except json.JSONDecodeError:
             return jsonify({"error": "Filters must be a JSON object."}), 400
-        if not isinstance(requested_filters, dict):
+        if not isinstance(filters, dict):
             return jsonify({"error": "Filters must be a JSON object."}), 400
-        filters = {
-            name: value.strip()
-            for name, value in requested_filters.items()
-            if name in searchable_names and isinstance(value, str) and value.strip()
-        }
-        query = request.args.get("q", "").strip().casefold()
-        sort_by = request.args.get("sort", "uploaded")
-        if sort_by not in {"uploaded", "popularity", "name"}:
-            sort_by = "uploaded"
         try:
-            page = max(1, int(request.args.get("page", "1")))
-            requested_page_size = int(request.args.get("page_size", "24"))
+            page = int(request.args.get("page", "1"))
+            page_size = int(request.args.get("page_size", "24"))
         except ValueError:
-            page, requested_page_size = 1, 24
-        page_size = requested_page_size if requested_page_size in {24, 48, 96} else 24
+            page, page_size = 1, 24
 
-        def metadata_values(value: Any) -> list[str]:
-            if value is None:
-                return []
-            if isinstance(value, dict):
-                if "value" in value:
-                    return metadata_values(value["value"])
-                return [item for child in value.values() for item in metadata_values(child)]
-            if isinstance(value, list):
-                return [item for child in value for item in metadata_values(child)]
-            text = str(value).strip()
-            return [text] if text else []
-
-        resources = data_manager.visible_resources()
-        facets: dict[str, list[str]] = {}
-        for definition in definitions:
-            facet_values = []
-            seen = set()
-            for value in [
-                *(str(option) for option in definition.get("Options") or []),
-                *(
-                    item
-                    for resource in resources
-                    for item in metadata_values((resource.get("MetaData") or {}).get(definition["Name"]))
-                ),
-            ]:
-                key = value.casefold()
-                if key not in seen:
-                    seen.add(key)
-                    facet_values.append(value)
-            facets[definition["Name"]] = facet_values
-
-        favorites_by_resource: dict[int, int] = {}
-        for favorite in data_manager.rows("favorites"):
-            resource_id = favorite.get("ResourceID")
-            if isinstance(resource_id, int):
-                favorites_by_resource[resource_id] = favorites_by_resource.get(resource_id, 0) + 1
-
-        results = []
-        for resource in resources:
-            metadata = resource.get("MetaData") or {}
-            work = _resource_view(resource, url_for)
-            all_metadata_values = [item for value in metadata.values() for item in metadata_values(value)]
-            if query:
-                search_text = " ".join([
-                    work["title"],
-                    str(resource.get("OriginalName") or ""),
-                    *all_metadata_values,
-                ]).casefold()
-                if query not in search_text:
-                    continue
-            if any(
-                selected.casefold() not in {
-                    value.casefold() for value in metadata_values(metadata.get(name))
-                }
-                for name, selected in filters.items()
-            ):
-                continue
-
-            source = resource.get("Source")
-            try:
-                uploaded_at = Path(source).stat().st_mtime if source else float(resource["id"])
-            except OSError:
-                uploaded_at = float(resource["id"])
-            download_count = resource.get("DownloadCount")
-            popularity = (
-                float(download_count)
-                if isinstance(download_count, (int, float)) and not isinstance(download_count, bool)
-                else favorites_by_resource.get(resource["id"], 0)
-            )
-            results.append({**work, "uploaded_at": uploaded_at, "popularity": popularity})
-
-        if sort_by == "name":
-            results.sort(key=lambda work: (work["title"].casefold(), work["id"]))
-        elif sort_by == "popularity":
-            results.sort(key=lambda work: (work["popularity"], work["uploaded_at"], work["id"]), reverse=True)
-        else:
-            results.sort(key=lambda work: (work["uploaded_at"], work["id"]), reverse=True)
-
-        total = len(results)
-        page_count = (total + page_size - 1) // page_size
-        page = min(page, max(page_count, 1))
-        start = (page - 1) * page_size
+        search_result = data_manager.search_resources(
+            query=request.args.get("q", ""),
+            filters=filters,
+            sort=request.args.get("sort", "uploaded"),
+            page=page,
+            page_size=page_size,
+        )
         return jsonify({
-            "results": results[start:start + page_size],
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "page_count": page_count,
-            "facets": facets,
+            **search_result,
+            "results": [
+                {
+                    **_resource_view(row["resource"], url_for),
+                    "metadata": _resource_metadata_view(row["resource"]),
+                    "uploaded_at": row["uploaded_at"],
+                    "popularity": row["popularity"],
+                }
+                for row in search_result["results"]
+            ],
         })
+
+    @app.get("/api/search/facets")
+    def search_facets_api():
+        return jsonify({"facets": data_manager.search_facets()})
 
     @app.get("/api/site/metadata")
     def site_metadata():
@@ -340,6 +258,24 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             "favorites": favorites,
             "collections": collections,
         })
+
+    @app.patch("/api/profile")
+    def api_update_profile():
+        if not is_logged_in():
+            return jsonify({"error": "Log in to update your profile."}), 401
+        payload = request.get_json(silent=True) or {}
+        updated_name = payload.get("name", "").strip()
+        
+        if len(updated_name) == 0:
+            return jsonify({"error": "Name cannot be empty."}), 400
+        
+        try:
+            user = data_manager.update_user_name(session["user_id"], updated_name)
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        if user is None:
+            return jsonify({"error": "User not found."}), 404
+        return jsonify({"user": user})
 
     @app.post("/profile/collections/<int:collection_id>/rename")
     def rename_profile_collection(collection_id: int):
@@ -424,18 +360,6 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         uploader = uploader or {"Name": "Unknown user", "JoinedAt": ""}
         uploader_initials = "".join(word[0] for word in uploader["Name"].split()[:2]).upper()
         signed_in_user_id = session.get("user_id")
-        # Return metadata excluding OCR and FileHash (system fields), converted to strings
-        metadata_values = {}
-        for name, value in metadata.items():
-            if name not in ("OCR", "FileHash"):
-                if isinstance(value, dict) and "value" in value:
-                    metadata_values[name] = str(value["value"])
-                elif isinstance(value, list):
-                    metadata_values[name] = json.dumps(value)
-                elif value is None:
-                    metadata_values[name] = ""
-                else:
-                    metadata_values[name] = str(value)
         return jsonify({
             "resource": _resource_view(resource, url_for),
             "original_name": resource.get("OriginalName") or source_path.name,
@@ -443,7 +367,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             "uploader_initials": uploader_initials,
             "is_favorite": data_manager.is_favorite(signed_in_user_id, resource_id) if isinstance(signed_in_user_id, int) else False,
             "ocr": metadata.get("OCR") or {},
-            "metadata": metadata_values,
+            "metadata": _resource_metadata_view(resource),
             "file_url": f"/api/library/{resource_id}/file",
             "download_url": f"/api/library/{resource_id}/download",
         })
@@ -545,6 +469,8 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         if not source_path.is_file():
             abort(404)
 
+        # Increment the download count
+        data_manager.track_download(resource_id)
         original_name = resource.get("OriginalName") or source_path.name
         extension = Path(original_name).suffix or source_path.suffix
         title = str(resource.get("DisplayName") or Path(original_name).stem).strip()
@@ -852,6 +778,22 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
 def _get_resource(data_manager: DataManager, resource_id: int) -> dict[str, Any] | None:
     return next((row for row in data_manager.visible_resources() if row["id"] == resource_id), None)
+
+
+def _resource_metadata_view(resource: dict[str, Any]) -> dict[str, str]:
+    metadata_values: dict[str, str] = {}
+    for name, value in (resource.get("MetaData") or {}).items():
+        if name in ("OCR", "FileHash"):
+            continue
+        if isinstance(value, dict) and "value" in value:
+            metadata_values[name] = str(value["value"])
+        elif isinstance(value, list):
+            metadata_values[name] = json.dumps(value)
+        elif value is None:
+            metadata_values[name] = ""
+        else:
+            metadata_values[name] = str(value)
+    return metadata_values
 
 
 def _resource_view(resource: dict[str, Any], url_builder) -> dict[str, Any]:

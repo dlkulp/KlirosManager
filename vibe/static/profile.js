@@ -16,10 +16,18 @@ fetch("/api/profile")
     profileMessage.hidden = false;
   });
 
+document.querySelector("#profile-name-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await sendProfileAction("/api/profile", "PATCH", {
+    name: document.querySelector("#profile-name-input").value.trim(),
+  });
+});
+
 function renderProfile(profile) {
   profileContent.hidden = false;
   document.querySelector("#profile-initials").textContent = profile.initials;
   document.querySelector("#profile-name").textContent = profile.user.Name;
+  document.querySelector("#profile-name-input").value = profile.user.Name;
   document.querySelector("#profile-email").textContent = profile.user.Email;
   const joined = document.querySelector("#profile-joined");
   joined.dateTime = profile.user.JoinedAt || "";
