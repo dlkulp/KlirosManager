@@ -3,11 +3,12 @@ const profileContent = document.querySelector("#profile-content");
 const uploadList = document.querySelector("#profile-upload-list");
 const collectionsContainer = document.querySelector("#profile-collections");
 const favoritesContainer = document.querySelector("#profile-favorites");
+const profileUserId = window.location.pathname.match(/^\/profile\/(\d+)\/?$/)?.[1];
 
-fetch("/api/profile")
+fetch(profileUserId ? `/api/profile/${profileUserId}` : "/api/profile")
   .then(async (response) => {
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || "Log in to view your profile.");
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Could not load this profile.");
     return payload;
   })
   .then(renderProfile)
@@ -27,19 +28,27 @@ function renderProfile(profile) {
   profileContent.hidden = false;
   document.querySelector("#profile-initials").textContent = profile.initials;
   document.querySelector("#profile-name").textContent = profile.user.Name;
-  document.querySelector("#profile-name-input").value = profile.user.Name;
-  document.querySelector("#profile-email").textContent = profile.user.Email;
   const joined = document.querySelector("#profile-joined");
   joined.dateTime = profile.user.JoinedAt || "";
   joined.textContent = `Joined ${profile.user.JoinedAt || "date unavailable"}`;
   document.querySelector("#profile-upload-count").textContent = profile.uploads.length;
+  if (!profile.uploads.length) document.querySelector("#profile-no-uploads").hidden = false;
+  for (const upload of profile.uploads) uploadList.append(renderUpload(upload));
+
+  // Only the owner's response includes private sections.
+  const isOwner = Array.isArray(profile.collections);
+  if (!isOwner) {
+    renderPublicProfile(profile);
+    return;
+  }
+
+  document.querySelector("#profile-name-input").value = profile.user.Name;
+  document.querySelector("#profile-email").textContent = profile.user.Email;
   document.querySelector("#profile-collection-count").textContent = profile.collections.length;
   const favorites = profile.favorites || [];
   document.querySelector("#profile-favorite-count").textContent = favorites.length;
   document.querySelector("#profile-no-favorites").hidden = favorites.length > 0;
-  if (!profile.uploads.length) document.querySelector("#profile-no-uploads").hidden = false;
   if (!profile.collections.length) document.querySelector("#profile-no-collections").hidden = false;
-  for (const upload of profile.uploads) uploadList.append(renderUpload(upload));
   for (const work of favorites) {
     const item = renderUpload(work);
     const removeButton = document.createElement("button");
@@ -60,6 +69,16 @@ function renderProfile(profile) {
     favoritesContainer.append(item);
   }
   for (const collection of profile.collections) collectionsContainer.append(renderCollection(collection));
+}
+
+function renderPublicProfile(profile) {
+  for (const element of document.querySelectorAll("[data-owner-only]")) element.hidden = true;
+  const name = profile.user.Name;
+  document.title = `${name} | Kliros Manager`;
+  document.querySelector("#profile-eyebrow").textContent = "Profile";
+  document.querySelector("#profile-heading").textContent = name;
+  document.querySelector("#uploads-eyebrow").textContent = "Shared scores";
+  document.querySelector("#profile-no-uploads").textContent = `${name} has not uploaded any scores yet.`;
 }
 
 function renderUpload(work) {

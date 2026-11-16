@@ -28,6 +28,7 @@ All successful responses below use HTTP 200. `Auth` means a signed-in cookie ses
 | GET | `/api/search` | No | `SearchRequestDto` as query parameters | `SearchResponseDto` |
 | GET | `/api/search/facets` | No | None | `SearchFacetsResponseDto` |
 | GET | `/api/profile` | Yes | None | `ProfileResponseDto` |
+| GET | `/api/profile/{id}` | No | User ID | `PublicProfileResponseDto` or `ProfileResponseDto` for the signed-in owner |
 | PATCH | `/api/profile` | Yes | `UpdateProfileRequestDto` JSON | `UpdateProfileResponseDto` |
 | GET | `/api/site/metadata` | No | None | `SiteMetadataResponseDto` |
 | GET | `/api/library/{id}` | No | Resource ID | `ResourceDetailResponseDto` |
@@ -61,17 +62,18 @@ Full TypeScript declarations are in [api-client.ts](api-client.ts).
 | `SearchResourceDto` | `ResourceDto` plus `metadata: Record<string, string>`, `uploaded_at`, and `popularity` |
 | `SearchFacetsResponseDto` | `facets: Record<string, string[]>`, searchable metadata fields and their choices |
 | `CollectionDto` | `id`, `Name`, `Public`, `UserId` |
-| `ProfileResponseDto` | `user`, `initials`, `uploads`, `favorites`, `collections`; each collection adds `items: ResourceDto[]` |
+| `PublicProfileResponseDto` | `user` with `UserID`, `Name`, `JoinedAt`, `UserType` (no `Email`), `initials`, `uploads`; no `favorites` or `collections` keys |
+| `ProfileResponseDto` | Owner response: public profile fields plus `user.Email`, `favorites`, `collections`; each collection adds `items: ResourceDto[]` |
 | `UpdateProfileResponseDto` | `user: UserDto`, the updated current user |
 | `SiteMetadataResponseDto` | `metadata_fields: MetadataDefinitionDto[]` |
 | `MetadataDefinitionDto` | `id`, `Name`, `Type`, `Options` (string array or null), `Core`, `Extracted`, `Searchable`, optional `Required` |
 | `MetadataFieldDto` | Metadata definition plus `value: string` |
-| `ResourceDetailResponseDto` | `resource`, `original_name`, `uploader`, `uploader_initials`, `is_favorite`, `ocr`, `metadata`, `file_url`, `download_url` |
+| `ResourceDetailResponseDto` | `resource`, `original_name`, `uploader` (`Name`, `JoinedAt`, and, for known users, `UserID` and `UserType`; never `Email`), `uploader_initials`, `is_favorite`, `ocr`, `metadata`, `file_url`, `download_url` |
 | `OcrDto` | `status` (`success`, `unavailable`, `error`), `text`, `message`; detail's `ocr` may be empty when absent |
 | `RankedMatchDto` | `resource_id`, `title`, `original_name`, `composer`, nullable `hamming_distance`, `title_similarity`, `composer_similarity`, numeric `confidence`, `detail_url`, `preview_url` |
 | `BinaryResponseDto` | Client-side envelope: `body: Blob`, `content_type`, `content_disposition`; these are not server JSON fields |
 
-Nullable resource fields follow the local database schema; thumbnail URLs/srcset are null when the source file is absent. `Source` exposes a backend-local path, not a URL clients should fetch. `MetaData` in resource list may contain primitives, arrays, `{value, source, reviewed}` objects, OCR, and hash data. Detail `metadata` and each search result's `metadata` use the same flat string-valued display map, excluding `OCR` and `FileHash`. The display map unwraps `value` wrappers before string conversion, JSON-encodes top-level arrays, converts bare null to an empty string, and stringifies other values. Missing or null `MetaData` produces `{}`; the raw `MetaData` field is unchanged. Unknown uploaders fall back to `{Name: "Unknown user", JoinedAt: ""}`. File type detection (PDF vs image) is determined client-side by checking the file extension.
+Nullable resource fields follow the local database schema; thumbnail URLs/srcset are null when the source file is absent. `Source` exposes a backend-local path, not a URL clients should fetch. `MetaData` in resource list may contain primitives, arrays, `{value, source, reviewed}` objects, OCR, and hash data. Detail `metadata` and each search result's `metadata` use the same flat string-valued display map, excluding `OCR` and `FileHash`. The display map unwraps `value` wrappers before string conversion, JSON-encodes top-level arrays, converts bare null to an empty string, and stringifies other values. Missing or null `MetaData` produces `{}`; the raw `MetaData` field is unchanged. The detail endpoint's `uploader` excludes `Email`; known uploaders include `UserID`, `Name`, `JoinedAt`, and `UserType`, while unknown uploaders fall back to `{Name: "Unknown user", JoinedAt: ""}`. File type detection (PDF vs image) is determined client-side by checking the file extension.
 
 ## Search
 
@@ -91,7 +93,11 @@ Upload sorting uses source-file modification time in epoch seconds, falling back
 
 ## Profile, Favorites, and Collections
 
-`GET /api/profile` returns only the current user's uploads, favorites, and owned collections. Favorites sort by `FavoritedAt` descending; collections sort by name; collection items sort by membership ID. The profile payload omits favorite timestamps and collection-member order/annotation fields.
+`GET /api/profile` defaults to the current user and returns 401 when not signed in, including sessions for deleted users. `GET /api/profile/{id}` accepts an explicit user ID without requiring login and returns 404 if that user does not exist.
+
+Both routes return the requested user's profile and visible uploads, sorted by descending resource ID. Only a signed-in user requesting their own profile receives their email, favorites, and collections. For guests, invalid sessions, and other-user requests, the `Email` field and the `favorites` and `collections` keys are omitted entirely, regardless of collection `Public` flags.
+
+Owner favorites sort by `FavoritedAt` descending; collections sort by name; collection items sort by membership ID. The profile payload omits favorite timestamps and collection-member order/annotation fields. The TypeScript client preserves `getProfile()` and `getProfile(options)` for the owner response; `getProfile(userId, options)` returns the public or owner response according to the session.
 
 - Profile PATCH uses `{name}` to set the current user's display name and returns `{user: UserDto}`. A trimmed nonempty name of at most 255 characters is required. Invalid names return 400; logged-out requests return 401; a missing current user returns 404.
 - Favorite POST toggles and returns `{is_favorite: boolean}`. It is not safe to blindly retry.

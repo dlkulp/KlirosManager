@@ -443,6 +443,11 @@ class UploadRouteTests(unittest.TestCase):
         self.assertIn("Questionable", detail)
         self.assertIn("Copyright", detail)
         self.assertEqual(payload["uploader"]["Name"], "Local Owner")
+        self.assertNotIn("Email", payload["uploader"])
+        self.assertEqual(
+            set(payload["uploader"]),
+            {"UserID", "Name", "JoinedAt", "UserType"},
+        )
         self.assertEqual(payload["metadata"], {})
         self.assertEqual(self.client.post(f"/library/{resource['id']}/favorite").status_code, 401)
 
@@ -527,6 +532,62 @@ class UploadRouteTests(unittest.TestCase):
         self.assertEqual(deleted.status_code, 302)
         self.assertFalse(data_manager.rows("collection"))
         self.assertFalse(data_manager.rows("collection_member"))
+
+    def test_profile_by_id_hides_private_data_from_guests_and_other_users(self):
+        data_manager = self.app.extensions["data_manager"]
+        database = json.loads((self.root / "db.json").read_text(encoding="utf-8"))
+        other_user = dict(database["tables"]["user"]["rows"][0])
+        other_user.update({"UserID": 2, "Name": "Other user", "Email": "other@example.test"})
+        database["tables"]["user"]["rows"].append(other_user)
+        data_manager._write(database)
+        resource = data_manager.insert_resource({"OriginalName": "other.pdf", "UserID": 2})
+        data_manager.insert_resource({"OriginalName": "mine.pdf", "UserID": 1})
+        data_manager.insert_resource({"OriginalName": "hidden.pdf", "UserID": 2, "Hidden": True})
+        data_manager.toggle_favorite(2, resource["id"])
+        collection = data_manager.create_collection(2, "Private collection")
+        data_manager.add_resource_to_collection(2, collection["id"], resource["id"])
+        database = json.loads((self.root / "db.json").read_text(encoding="utf-8"))
+        database["tables"]["collection"]["rows"][0]["Public"] = True
+        data_manager._write(database)
+
+        for viewer_id in (None, 1, 999):
+            with self.subTest(viewer_id=viewer_id):
+                with self.client.session_transaction() as session_data:
+                    session_data.clear()
+                    if viewer_id is not None:
+                        session_data["user_id"] = viewer_id
+                with patch.object(data_manager, "collections_for_user") as collections_for_user:
+                    response = self.client.get("/api/profile/2")
+                collections_for_user.assert_not_called()
+                self.assertEqual(response.status_code, 200)
+                payload = response.get_json()
+                self.assertEqual(set(payload), {"user", "initials", "uploads"})
+                self.assertEqual(payload["user"], {
+                    key: other_user[key] for key in ("UserID", "Name", "JoinedAt", "UserType")
+                })
+                self.assertEqual(payload["initials"], "OU")
+                self.assertEqual([work["id"] for work in payload["uploads"]], [resource["id"]])
+                self.assertEqual(self.client.get("/api/profile/9999").status_code, 404)
+                if viewer_id != 1:
+                    self.assertEqual(self.client.get("/api/profile").status_code, 401)
+
+    def test_profile_by_id_returns_private_data_to_its_owner(self):
+        data_manager = self.app.extensions["data_manager"]
+        resource = data_manager.insert_resource({"OriginalName": "mine.pdf", "UserID": 1})
+        data_manager.toggle_favorite(1, resource["id"])
+        collection = data_manager.create_collection(1, "Saved")
+        data_manager.add_resource_to_collection(1, collection["id"], resource["id"])
+        self.login_demo()
+
+        response = self.client.get("/api/profile/1")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload, self.client.get("/api/profile").get_json())
+        self.assertEqual(payload["user"]["Email"], "local@kliros.invalid")
+        self.assertEqual([work["id"] for work in payload["favorites"]], [resource["id"]])
+        self.assertEqual([item["id"] for item in payload["collections"]], [collection["id"]])
+        self.assertEqual(payload["collections"][0]["items"][0]["id"], resource["id"])
 
     def test_profile_update_sets_display_name(self):
         endpoint = "/api/profile"
@@ -722,7 +783,7 @@ class UploadRouteTests(unittest.TestCase):
         self.assertEqual(facets["Liturgical Date"], [])
 
     def test_page_routes_are_static_and_data_is_available_from_json_apis(self):
-        for path in ("/", "/library", "/search", "/profile", "/import"):
+        for path in ("/", "/library", "/search", "/profile", "/profile/1", "/import"):
             with self.subTest(path=path):
                 response = self.client.get(path)
                 page = response.get_data(as_text=True)

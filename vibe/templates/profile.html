@@ -20,17 +20,17 @@
   </header>
   <main class="page-shell profile-shell">
     <a class="back-link" href="/library">&larr; Library</a>
-    <p class="eyebrow">Account</p>
-    <h1>My profile</h1>
+    <p id="profile-eyebrow" class="eyebrow">Account</p>
+    <h1 id="profile-heading">My profile</h1>
     <p id="profile-message" class="request-status" role="status" hidden></p>
     <div id="profile-content" hidden>
       <section class="profile-summary" aria-label="User details">
         <div id="profile-initials" class="profile-avatar" aria-hidden="true"></div>
         <div class="profile-summary-copy">
           <h2 id="profile-name"></h2>
-          <p id="profile-email"></p>
+          <p id="profile-email" data-owner-only></p>
           <time id="profile-joined"></time>
-          <details class="collection-rename">
+          <details class="collection-rename" data-owner-only>
             <summary>Edit display name</summary>
             <form id="profile-name-form">
               <label for="profile-name-input">Display Name</label>
@@ -43,26 +43,26 @@
         </div>
         <dl class="profile-counts">
           <div><dt>Uploads</dt><dd id="profile-upload-count"></dd></div>
-          <div><dt>Favorites</dt><dd id="profile-favorite-count"></dd></div>
-          <div><dt>Collections</dt><dd id="profile-collection-count"></dd></div>
+          <div data-owner-only><dt>Favorites</dt><dd id="profile-favorite-count"></dd></div>
+          <div data-owner-only><dt>Collections</dt><dd id="profile-collection-count"></dd></div>
         </dl>
       </section>
       <section class="profile-section" aria-labelledby="uploads-heading">
         <div class="profile-section-heading">
-          <div><p class="eyebrow">Your library</p><h2 id="uploads-heading">Uploads</h2></div>
-          <a class="text-link" href="/import">Import score <span aria-hidden="true">&rarr;</span></a>
+          <div><p id="uploads-eyebrow" class="eyebrow">Your library</p><h2 id="uploads-heading">Uploads</h2></div>
+          <a class="text-link" href="/import" data-owner-only>Import score <span aria-hidden="true">&rarr;</span></a>
         </div>
         <ul id="profile-upload-list" class="score-list search-result-grid"></ul>
         <p id="profile-no-uploads" class="empty-state" hidden>You have not uploaded any scores yet.</p>
       </section>
-      <section class="profile-section" aria-labelledby="favorites-heading">
+      <section class="profile-section" aria-labelledby="favorites-heading" data-owner-only>
         <div class="profile-section-heading">
           <div><p class="eyebrow">Saved scores</p><h2 id="favorites-heading">Favorites</h2></div>
         </div>
         <ul id="profile-favorites" class="score-list search-result-grid"></ul>
         <p id="profile-no-favorites" class="empty-state" hidden>You have no favorites yet.</p>
       </section>
-      <section class="profile-section" aria-labelledby="collections-heading">
+      <section class="profile-section" aria-labelledby="collections-heading" data-owner-only>
         <div class="profile-section-heading">
           <div><p class="eyebrow">Collections you own</p><h2 id="collections-heading">Collections</h2></div>
         </div>

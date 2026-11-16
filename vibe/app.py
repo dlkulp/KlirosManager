@@ -214,17 +214,23 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         })
 
     @app.get("/profile")
-    def profile():
+    @app.get("/profile/<int:user_id>")
+    def profile(user_id: int | None = None):
         return send_file(PROJECT_ROOT / "templates" / "profile.html", mimetype="text/html")
 
     @app.get("/api/profile")
-    def profile_data():
-        if not is_logged_in():
-            return jsonify({"error": "Log in to view your profile."}), 401
-        user_id = session["user_id"]
+    @app.get("/api/profile/<int:user_id>")
+    def profile_data(user_id: int | None = None):
+        logged_in = is_logged_in()
+        if user_id is None:
+            current_user_id = session.get("user_id")
+            if not logged_in or not isinstance(current_user_id, int):
+                return jsonify({"error": "Log in to view your profile."}), 401
+            user_id = current_user_id
         user = data_manager.get_user(user_id)
         if user is None:
-            abort(401)
+            return jsonify({"error": "User not found."}), 404
+        is_owner = logged_in and user_id == session["user_id"]
         resources = {
             row["id"]: _resource_view(row, url_for)
             for row in data_manager.visible_resources()
@@ -234,6 +240,15 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             key=lambda resource: resource["id"],
             reverse=True,
         )
+        profile_payload = {
+            "user": user if is_owner else {
+                key: user[key] for key in ("UserID", "Name", "JoinedAt", "UserType")
+            },
+            "initials": "".join(word[0] for word in user["Name"].split()[:2]).upper(),
+            "uploads": uploads,
+        }
+        if not is_owner:
+            return jsonify(profile_payload)
         collections = data_manager.collections_for_user(user_id)
         favorites = [
             resources[row["ResourceID"]]
@@ -252,9 +267,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                 if member["ResourceID"] in resources
             ]
         return jsonify({
-            "user": user,
-            "initials": "".join(word[0] for word in user["Name"].split()[:2]).upper(),
-            "uploads": uploads,
+            **profile_payload,
             "favorites": favorites,
             "collections": collections,
         })
@@ -264,13 +277,9 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         if not is_logged_in():
             return jsonify({"error": "Log in to update your profile."}), 401
         payload = request.get_json(silent=True) or {}
-        updated_name = payload.get("name", "").strip()
-        
-        if len(updated_name) == 0:
-            return jsonify({"error": "Name cannot be empty."}), 400
         
         try:
-            user = data_manager.update_user_name(session["user_id"], updated_name)
+            user = data_manager.update_user_name(session["user_id"], payload.get("name", ""))
         except ValueError as error:
             return jsonify({"error": str(error)}), 400
         if user is None:
@@ -357,6 +366,11 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         source_path = Path(source_value) if source_value else Path(resource.get("OriginalName") or "")
         metadata = resource.get("MetaData") or {}
         uploader = data_manager.get_user(resource["UserID"])
+        if uploader is not None:
+            uploader = {
+                key: uploader[key]
+                for key in ("UserID", "Name", "JoinedAt", "UserType")
+            }
         uploader = uploader or {"Name": "Unknown user", "JoinedAt": ""}
         uploader_initials = "".join(word[0] for word in uploader["Name"].split()[:2]).upper()
         signed_in_user_id = session.get("user_id")

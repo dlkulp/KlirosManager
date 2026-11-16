@@ -70,10 +70,13 @@ export interface CollectionDto {
   UserId: number | null;
 }
 export interface ProfileCollectionDto extends CollectionDto { items: ResourceDto[] }
-export interface ProfileResponseDto {
-  user: UserDto;
+export interface PublicProfileResponseDto {
+  user: Omit<UserDto, "Email">;
   initials: string;
   uploads: ResourceDto[];
+}
+export interface ProfileResponseDto extends PublicProfileResponseDto {
+  user: UserDto;
   favorites: ResourceDto[];
   collections: ProfileCollectionDto[];
 }
@@ -98,7 +101,7 @@ export interface UploaderDto {
   Name: string;
   JoinedAt: string;
   UserID?: number;
-  Email?: string;
+  UserType?: UserTypeDto;
 }
 export interface ResourceDetailResponseDto {
   resource: ResourceDto;
@@ -302,8 +305,16 @@ export class KlirosApi {
     if (request.sort !== undefined) query.set("sort", request.sort);
     return this.json(`/api/search?${query}`, options);
   }
-  getProfile(options: ApiRequestOptions = {}): Promise<ProfileResponseDto> {
-    return this.json("/api/profile", options);
+  getProfile(options?: ApiRequestOptions): Promise<ProfileResponseDto>;
+  getProfile(userId: number, options?: ApiRequestOptions): Promise<PublicProfileResponseDto | ProfileResponseDto>;
+  getProfile(
+    userIdOrOptions: number | ApiRequestOptions = {},
+    options: ApiRequestOptions = {},
+  ): Promise<PublicProfileResponseDto | ProfileResponseDto> {
+    if (typeof userIdOrOptions === "number") {
+      return this.json(`/api/profile/${userIdOrOptions}`, options);
+    }
+    return this.json("/api/profile", userIdOrOptions);
   }
   updateUserType(userId: number, request: UpdateUserTypeRequestDto, options: ApiRequestOptions = {}): Promise<UpdateUserTypeResponseDto> {
     return this.json(`/api/admin/users/${userId}/type`, this.jsonBody(request, "PATCH", options));

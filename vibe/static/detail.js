@@ -69,7 +69,15 @@ function renderDetail(payload) {
   
   const initials = document.querySelector("#uploader-initials");
   initials.textContent = payload.uploader_initials;
-  document.querySelector("#uploader-name").textContent = payload.uploader.Name;
+  const uploaderName = document.querySelector("#uploader-name");
+  if (Number.isInteger(payload.uploader.UserID)) {
+    const link = document.createElement("a");
+    link.href = `/profile/${payload.uploader.UserID}`;
+    link.textContent = payload.uploader.Name;
+    uploaderName.replaceChildren(link);
+  } else {
+    uploaderName.textContent = payload.uploader.Name;
+  }
   const joined = document.querySelector("#uploader-joined");
   joined.dateTime = payload.uploader.JoinedAt || "";
   joined.textContent = `Joined ${payload.uploader.JoinedAt || "date unavailable"}`;

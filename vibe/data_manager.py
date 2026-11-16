@@ -442,6 +442,7 @@ class DataManager:
                     row["DownloadCount"] = (row.get("DownloadCount") or 0) + 1
                     self._write(database)
                     return
+
     def update_resource_metadata(
         self,
         resource_id: int,
