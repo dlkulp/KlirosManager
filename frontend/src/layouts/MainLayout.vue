@@ -1,7 +1,7 @@
 <template>
   <q-layout view="lHh Lpr lFf">
     <q-header elevated>
-      <q-toolbar>
+      <q-toolbar >
         <q-btn
           flat
           dense
@@ -19,7 +19,7 @@
 
     <q-drawer v-model="leftDrawerOpen" show-if-above bordered>
       <q-list>
-        <q-item-label header> Essential Links </q-item-label>
+        <q-item-label header> Main Menu </q-item-label>
 
         <EssentialLink
           v-for="link in linksList"
@@ -36,53 +36,68 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, onMounted } from "vue";
+import { setCssVar, getCssVar } from "quasar";
 import EssentialLink, {
   type EssentialLinkProps
 } from "@/components/EssentialLink.vue";
+import { getLentRange, isDateInRange, getPaschaltideRange, getPentecostRange, getPalmSundayRange, dateStripYear, colors } from "@/helpers/helpers";
+
+onMounted(() => {
+  const todayDate: Date = new Date();
+  let currYear = todayDate.getFullYear();
+  console.log(dateStripYear(todayDate));
+
+  // Feasts in Red
+  if (
+    isDateInRange(todayDate, {start: `11/15/${currYear}`, end: `12/24/${currYear}`}) || // Nativity Fast
+    isDateInRange(todayDate, {start: `12/25/${currYear}`, end: `01/14/${currYear+1}`}) || // Nativity (usually white, but not a great color for the screen)
+    isDateInRange(todayDate, getPaschaltideRange(todayDate.getFullYear())) // Paschaltide is also white, but red is a better color for the screen
+  ) {
+    console.log("Red");
+    setCssVar("primary", colors.red);
+  }
+  // Feasts in Blue
+  else if (isDateInRange(todayDate, {start: `08/01/${currYear}`, end: `08/15/${currYear}`})) { // Dormition Fast
+    console.log("Blue");
+    setCssVar("primary", colors.blue);
+  }
+  // Feasts in Purple
+  else if (isDateInRange(todayDate, getLentRange(todayDate.getFullYear()))) { // Lent
+    console.log("Purple");
+    setCssVar("primary", colors.purple);
+  }
+  // Feasts in Green
+  else if (
+    isDateInRange(todayDate, getPentecostRange(todayDate.getFullYear())) || // Pentecost
+    isDateInRange(todayDate, getPalmSundayRange(todayDate.getFullYear()))) { // Palm Sunday
+    console.log("Green");
+    setCssVar("primary", colors.green);
+  }
+  // Feasts in Gold
+  else {
+    console.log("Gold");
+    setCssVar("primary", colors.gold);
+  }
+});
 
 const linksList: EssentialLinkProps[] = [
   {
-    label: "Docs",
-    caption: "quasar.dev",
-    icon: "school",
-    link: "https://quasar.dev"
+    label: "Home",
+    caption: "Home page",
+    icon: "home",
+    link: "/"
+  },{
+    label: "Library",
+    caption: "Full collection of scores",
+    icon: "library_music",
+    link: "/library"
   },
   {
-    label: "GitHub",
-    caption: "github.com/quasarframework",
-    icon: "code",
-    link: "https://github.com/quasarframework"
-  },
-  {
-    label: "Discord Chat Channel",
-    caption: "chat.quasar.dev",
-    icon: "chat",
-    link: "https://chat.quasar.dev"
-  },
-  {
-    label: "Forum",
-    caption: "forum.quasar.dev",
-    icon: "record_voice_over",
-    link: "https://forum.quasar.dev"
-  },
-  {
-    label: "Twitter",
-    caption: "@quasarframework",
-    icon: "rss_feed",
-    link: "https://twitter.quasar.dev"
-  },
-  {
-    label: "Facebook",
-    caption: "@QuasarFramework",
-    icon: "public",
-    link: "https://facebook.quasar.dev"
-  },
-  {
-    label: "Quasar Awesome",
-    caption: "Community Quasar projects",
-    icon: "favorite",
-    link: "https://awesome.quasar.dev"
+    label: "Import",
+    caption: "Upload a new score",
+    icon: "upload",
+    link: "/import"
   }
 ];
 

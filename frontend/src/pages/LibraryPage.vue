@@ -3,7 +3,7 @@
     <div id="card-container" class="flex justify-center items-center column">
       <h4>Library</h4>
       <p v-if="emptyMessage">{{ emptyMessage }}</p>
-      <div id="recent-works" class="fit row wrap justify-center items-start content-start">
+      <div id="all-works" class="fit row wrap justify-center items-start content-start">
         <q-btn flat
           v-for="(score, index) in allWorks"
           :key="`${score.title}-${index}`"
@@ -21,7 +21,7 @@
             </q-card-section>
             <q-card-section class="title-section">
               <strong>{{ score.title || score.OriginalName || "Untitled" }}</strong>
-              <p text-caption class="light">{{ getMDAttribution(score.MetaData?.Composer || score.MetaData?.Arranger) }}</p>
+              <p text-caption class="light">{{ getAttribution(score.MetaData) }}</p>
             </q-card-section>
           </q-card>
         </q-btn>
@@ -39,18 +39,34 @@ h2 {font-size: 2rem}
 .title-section p {
   color: $grey-6
 }
+.title-section strong {
+  font-size: 1.25rem;
+}
+#all-works a {
+  width: 300px;
+}
+#all-works .q-btn {
+  text-transform: none;
+}
+
 </style>
 
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { ResourceDto, KlirosApi } from "@/types/api-client";
+import { ResourceDto, KlirosApi, InferredMetadataValueDto } from "@/types/api-client";
+//import { getAttribution } from "@/helpers/helpers";
 
 const allWorks = ref<ResourceDto[]>();
 const emptyMessage = ref("");
 const api = new KlirosApi();
 
-function getMDAttribution(metaData: any) {
-  return metaData?.value || "By Unknown";
+function getAttribution(metaData: any) {
+  if (metaData?.Composer?.value)
+    return `By ${metaData.Composer.value}`;
+  else if (metaData?.Arranger?.value)
+    return `Arr. ${metaData.Arranger.value}`;
+  else
+    return "Unknown Composer";
 }
 
 onMounted(async () => {

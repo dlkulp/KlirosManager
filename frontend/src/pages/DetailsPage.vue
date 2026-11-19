@@ -1,29 +1,36 @@
 <template>
-  <q-page v-if="detail" class="flex justify-center">
-    <div id="score">
-      <h4>{{ detail.resource.title || detail.resource.OriginalName || "Untitled" }}</h4>
-      <p>{{ detail.resource.OriginalName }}</p>
-      <PdfViewer
-          v-if="detail"
-          :source="detail.file_url"
-          style="height: 80vh; width: 80%;"
-          :show-thumbnails="false"
-          :enable-search="false"
-          :enable-download="false"
-          :lazy="true"
-          :virtualization="true"
-        />
-      <q-btn color="secondary" to="/" label="Go to Index Page" no-caps />
-    </div>
-    <!-- <q-card>
-      <template v-for="(value, key) in detail.resource.MetaData" :key="key">
-        <q-card-section>
-          <p>{{ key }}</p>
-          <p>{{ value }}</p>
-        </q-card-section>
-        <q-separator />
-      </template>
-    </q-card> -->
+  <q-page v-if="detail">
+    <q-layout view="hhh lpr fff" max-width="720px">
+      <q-header>
+        <h4>{{ title }}</h4>
+        <p>{{ subtitle }}</p>
+      </q-header>
+      <q-page-container id="score">
+        <PdfViewer
+            v-if="detail"
+            :source="detail.file_url"
+            style="height: 100%;width: 98%"
+            :show-thumbnails="false"
+            :enable-search="false"
+            :enable-download="false"
+            :lazy="true"
+            :virtualization="true"
+            :text-layer="false"
+            theme="auto"
+          />
+      </q-page-container>
+      <q-drawer show side="right" persistent id="metadata" v-model="showDrawer" elevated :overlay="false">
+        <q-card>
+          <p>Metadata at a glance</p>
+        </q-card>
+        <template v-for="(value, key) in detail.metadata" :key="key">
+          <q-card>
+            <p>{{ key }}</p>
+            <p>{{ value }}</p>
+          </q-card>
+        </template>
+      </q-drawer>
+    </q-layout>
   </q-page>
 </template>
 
@@ -32,7 +39,10 @@ h4 {
   margin-bottom: 0px;
 }
 #score {
-  width:80%
+  width:100%;
+}
+.q-header {
+  background-color: $grey-9 !important;
 }
 </style>
 
@@ -49,10 +59,16 @@ const { scoreId } = defineProps<{
 
 const detail = ref<ResourceDetailResponseDto | null>(null);
 const api = new KlirosApi();
+const title = ref<string>();
+const subtitle = ref<string>();
+const showDrawer = ref(true);
 
 onMounted(async() => {
   try {
     detail.value = await api.getResource(Number(scoreId));
+    let english: boolean = detail.value.metadata?.["English Title"] !== undefined;
+    title.value = detail.value.metadata?.["English Title"] || detail.value.resource.title || detail.value.resource.OriginalName || "Untitled";
+    subtitle.value = english ? `${detail.value.resource.title} - ${detail.value.resource.OriginalName}` : detail.value.resource.OriginalName;
   } catch (error) {
     // detailStatus.textContent = error instanceof Error ? error.message : "The score could not be loaded.";
     // detailStatus.hidden = false;

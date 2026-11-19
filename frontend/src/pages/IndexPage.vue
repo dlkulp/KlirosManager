@@ -25,7 +25,7 @@
             </q-card-section>
             <q-card-section class="title-section">
               <strong>{{ score.title || score.OriginalName || "Untitled" }}</strong>
-              <p text-caption class="light">{{ getMDAttribution(score.MetaData?.Composer || score.MetaData?.Arranger) }}</p>
+              <p text-caption class="light">{{ getAttribution(score.MetaData) }}</p>
             </q-card-section>
           </q-card>
         </q-btn>
@@ -43,18 +43,19 @@ h2 {font-size: 2rem}
 .title-section p {
   color: $grey-6
 }
+#recent-works .q-btn {
+  text-transform: none;
+}
 </style>
 
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { ResourceDto, KlirosApi } from "@/types/api-client";
+import { getAttribution } from "@/helpers/helpers";
 
 const recentWorks = ref<ResourceDto[]>();
 const emptyMessage = ref("");
 const api = new KlirosApi();
-function getMDAttribution(metaData: any) {
-  return metaData?.value || "By Unknown";
-}
 
 onMounted(async () => {
   try {
