@@ -10,6 +10,8 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
+from service.ScoreExtractors import extract_score_text
+
 
 class FileProcessing:
     _REFERENCE_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".webp"}
@@ -109,11 +111,11 @@ class FileProcessing:
         if image is not None and visual_hash is None:
             errors.append("Perceptual hashing is unavailable; install the listed Python dependencies.")
 
-        ocr = (
-            self._extract_pdf_text(stored_path)
-            if extract_pdf_text and stored_path.suffix.lower() == ".pdf"
-            else None
-        )
+        ocr = None
+        if stored_path.suffix.lower() == ".pdf":
+            ocr = extract_score_text(stored_path)
+            if ocr is None and extract_pdf_text:
+                ocr = self._extract_pdf_text(stored_path)
         if ocr is None:
             ocr = self._extract_ocr(image)
         if ocr["status"] != "success" and ocr.get("message"):

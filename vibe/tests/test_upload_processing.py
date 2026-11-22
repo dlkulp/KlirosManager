@@ -1124,11 +1124,117 @@ class FileProcessingTests(unittest.TestCase):
         ocr.assert_called_once()
         pdf_path.unlink(missing_ok=True)
 
-    def test_hamming_distance_requires_matching_hex_hashes(self):
+    def test_musescore_pdf_uses_lyric_extractor_instead_of_ocr(self):
+        pdf_path = Path(__file__).parent / "fixtures" / "musescore-we-have-seen-the-true-light.pdf"
+
+        with patch.object(FileProcessing, "_generate_thumbnails", return_value=({}, None)), \
+             patch.object(FileProcessing, "_perceptual_hash", return_value="0" * 16), \
+             patch.object(FileProcessing, "_extract_ocr") as ocr:
+            result = FileProcessing().process_image(object(), [], [], 10, pdf_path)
+
+        ocr.assert_not_called()
+        self.assertEqual(result["ocr"]["status"], "success")
+        self.assertEqual(result["ocr"]["source"], "musescore")
+        # The PDF metadata title is stale ("Let Our Mouths be Filled"); the printed title wins.
+        self.assertEqual(result["ocr"]["text"].splitlines()[0], "We Have Seen the True Light")
+        self.assertIn("Arr. D Kulp", result["ocr"]["text"])
+        lyrics = result["ocr"]["lyrics"]
+        self.assertEqual(len(lyrics), 1)
+        self.assertTrue(lyrics[0].startswith("We have seen the true light. We have received the heavenly Spirit."))
+        self.assertIn("worthy to partake of Thy Holy, Divine, Immortal", lyrics[0])
+        self.assertIn("worshiping the undivided Trinity", lyrics[0])
+        self.assertNotIn("-", lyrics[0])
+        self.assertFalse(any(0xE000 <= ord(character) <= 0xF8FF for character in result["ocr"]["text"]))
+
+    def test_pdf_from_other_notation_software_falls_back_to_ocr(self):
+        import fitz
+
+        pdf_path = Path(tempfile.gettempdir()) / "other-creator-score.pdf"
+        with fitz.open() as document:
+            page = document.new_page()
+            page.insert_text((72, 72), "Some score")
+            document.set_metadata({"creator": "Finale v27"})
+            document.save(pdf_path)
+        self.addCleanup(pdf_path.unlink, missing_ok=True)
+
+        tesseract_result = {"status": "success", "text": "OCR score text", "message": ""}
+        with patch.object(FileProcessing, "_generate_thumbnails", return_value=({}, None)), \
+             patch.object(FileProcessing, "_perceptual_hash", return_value="0" * 16), \
+             patch.object(FileProcessing, "_extract_ocr", return_value=tesseract_result) as ocr:
+            result = FileProcessing().process_image(object(), [], [], 10, pdf_path)
+
+        self.assertEqual(result["ocr"], tesseract_result)
+        ocr.assert_called_once()
+
+    def test_sibelius_pdf_joins_text_hyphens_and_separates_verses(self):
+        import fitz
+
+        pdf_path = Path(tempfile.gettempdir()) / "sibelius-like-score.pdf"
+        with fitz.open() as document:
+            page = document.new_page()
+            page.insert_text((200, 60), "Little Song", fontsize=30)
+            for staff_line in range(5):
+                y = 100 + staff_line * 6
+                page.draw_line((50, y), (550, y))
+            # Sibelius writes hyphens as "-" text and prefixes verse numbers to the first syllable.
+            for x, text in ((60, "1.Twin"), (112, "-"), (124, "kle,"), (170, "twin"), (204, "-"), (216, "kle")):
+                page.insert_text((x, 150), text, fontsize=13)
+            for x, text in ((60, "2.When"), (124, "the"), (170, "sun")):
+                page.insert_text((x, 165), text, fontsize=13)
+            page.insert_text((60, 260), "Spoken stanza below the music", fontsize=11)
+            document.set_metadata({"creator": "Sibelius"})
+            document.save(pdf_path)
+        self.addCleanup(pdf_path.unlink, missing_ok=True)
+
+        with patch.object(FileProcessing, "_generate_thumbnails", return_value=({}, None)), \
+             patch.object(FileProcessing, "_perceptual_hash", return_value="0" * 16), \
+             patch.object(FileProcessing, "_extract_ocr") as ocr:
+            result = FileProcessing().process_image(object(), [], [], 10, pdf_path)
+
+        ocr.assert_not_called()
+        self.assertEqual(result["ocr"]["source"], "sibelius")
+        self.assertEqual(result["ocr"]["title"], "Little Song")
+        self.assertEqual(result["ocr"]["lyrics"], ["Twinkle, twinkle", "When the sun"])
+        self.assertIn("Spoken stanza below the music", result["ocr"]["text"])
         self.assertEqual(FileProcessing.hamming_distance("0000", "0001"), 1)
         self.assertEqual(FileProcessing.hamming_distance("ffff", "0000"), 16)
         self.assertEqual(FileProcessing.hamming_distance("0000", "00001"), 1)
         self.assertIsNone(FileProcessing.hamming_distance("nope", "0000"))
+
+    def test_lilypond_pdf_joins_drawn_and_dropped_hyphens_and_lowest_block_is_footer(self):
+        import fitz
+
+        pdf_path = Path(tempfile.gettempdir()) / "lilypond-like-score.pdf"
+        with fitz.open() as document:
+            page = document.new_page()
+            page.insert_text((200, 60), "Swallows", fontsize=30)
+            for staff_line in range(5):
+                y = 100 + staff_line * 6
+                page.draw_line((50, y), (550, y))
+            # Verse numbers are separate bold spans; hyphens are short dashes above the baseline.
+            page.insert_text((40, 150), "1.", fontsize=9, fontname="hebo")
+            for x, text in ((60, "When"), (100, "swal"), (140, "lows"), (190, "im")):
+                page.insert_text((x, 150), text, fontsize=10)
+            page.draw_line((128, 148), (130.3, 148))
+            # LilyPond drops the hyphen when the syllables are squeezed together.
+            page.insert_text((190 + fitz.get_text_length("im", fontsize=10) + 0.5, 150), "part", fontsize=10)
+            page.insert_text((60, 260), "Second stanza below the music", fontsize=11)
+            page.insert_text((60, 700), "Engraved 2024, free to copy", fontsize=8)
+            document.set_metadata({"creator": "LilyPond 2.24.0"})
+            document.save(pdf_path)
+        self.addCleanup(pdf_path.unlink, missing_ok=True)
+
+        with patch.object(FileProcessing, "_generate_thumbnails", return_value=({}, None)), \
+             patch.object(FileProcessing, "_perceptual_hash", return_value="0" * 16), \
+             patch.object(FileProcessing, "_extract_ocr") as ocr:
+            result = FileProcessing().process_image(object(), [], [], 10, pdf_path)
+
+        ocr.assert_not_called()
+        self.assertEqual(result["ocr"]["source"], "lilypond")
+        self.assertEqual(result["ocr"]["lyrics"], ["When swallows impart"])
+        self.assertTrue(result["ocr"]["text"].endswith(
+            "Second stanza below the music\n\nEngraved 2024, free to copy"
+        ))
 
     def test_reference_hashes_are_cached_until_folder_contents_change(self):
         reference_folder = Path(tempfile.gettempdir()) / "kliros-reference-cache-test"

@@ -30,7 +30,7 @@ The frontend must send cookies (`credentials: "include"` in fetch). A different 
 
 - Python 3.10 or later.
 - The packages in `requirements.txt`. PyMuPDF renders PDF pages locally, so Poppler is not required.
-- PDFs with an embedded text layer use page body text only; PDF document metadata is ignored. Image-only PDFs fall back to Tesseract OCR.
+- PDFs exported by recognized notation software are read by a program-specific extractor in `service/ScoreExtractors.py` instead of OCR. Currently MuseScore, Sibelius and LilyPond are recognized. It returns the printed title, credits and lyrics, joining hyphenated syllables back into words, and it does not use Tesseract. Other PDFs with an embedded text layer use page body text only when `extract_pdf_text` is enabled, and PDF document metadata is ignored. All remaining PDFs fall back to Tesseract OCR.
 - The Tesseract OCR executable installed separately. `run.ps1` finds standard per-user and system-wide Windows installations or a `PATH` installation; set `TESSERACT_CMD` if it is elsewhere.
   `winget install UB-Mannheim.TesseractOCR`
 - Permission to write the configured upload folder, `settings.json`, and `db.json`.
@@ -70,6 +70,39 @@ Signed-in users can visit `/profile` to see their name, join date, uploads, favo
 `/search` displays all scores initially, with live text and metadata filters, 24/48/96-item pages, and upload-date, popularity, or name sorting. Text search covers titles and metadata values. Popularity uses favorites until download counts are available.
 
 On detail pages, **Add to Collection** opens a selector where owners can save or remove the work from their collections or create a new collection. **Report to Moderator** currently displays a thank-you only; reasons and details are not sent or stored.
+
+## Score PDF extraction
+
+`service/ScoreExtractors.py` reads PDFs exported by notation software, where a plain text extraction mixes lyrics with garbage from music-font glyphs. `extract_score_text` tries each extractor in `SCORE_EXTRACTORS` and returns `None` when none claims the file, so `FileProcessing.process_image` falls back to the text layer or OCR.
+
+### How the shared engine works
+
+`LyricLayoutExtractor` holds all layout logic; each program's subclass only says how to recognize its PDFs, which fonts are music, and any join-spacing tweak.
+
+- **Systems** are groups of five long horizontal staff lines, merged into one system when a tall vertical line (barline or bracket) spans them.
+- **Lyric rows** are text rows inside a system or stacked below it, each within `max_row_gap` (40pt) of the row above. The lyric style is the most common font and size on the first (topmost) text row of each system, counting every style on that baseline. Text in other styles (tempo, dynamics, chords, measure numbers, staff names) is ignored.
+- **Words** are rebuilt from syllables. Syllables are joined when a hyphen lies between them on the same row: either a `-` text glyph on the baseline or a short vector dash 1–5pt above it. Extender lines sit on the baseline and are ignored. Leading verse numbers (`1.`, `2)`) are removed. Verses continue across systems and pages.
+- **Header**: on page 1, above the first system, the largest text is the title. Text centered under it is the subtitle, and text at the left or right edge is credits (composer, arranger, translator, instrument).
+- **Footer**: footers are optional and do not depend on the program or the source website. On each page, the text under the last system, excluding lyric rows, is split into blocks wherever there is a gap of more than about two line heights. The lowest block is the footer; any blocks above it (such as extra stanzas printed under the music) go to other text. Don't add rules that match a specific publisher's tagline.
+
+### Program notes
+
+| Program | Recognized by | Music fonts (excluded) | Hyphens and quirks |
+| --- | --- | --- | --- |
+| MuseScore | Creator `MuseScore Studio…` or XMP `CreatorTool` | Leland, Bravura, MScore, Petaluma, MuseJazz (Private Use Area glyphs) | Vector dashes about 2pt above the baseline; lyrics usually Edwin |
+| Sibelius | Creator contains `Sibelius`, or an `Opus*` font | Opus, Helsinki, Inkpen2, Reprise, Norfolk (mapped to ordinary Latin letters, so excluded by name) | `-` text on the baseline, sometimes smaller; verse number glued to the first syllable (`1.Twin`) |
+| LilyPond | Creator `LilyPond …` (usually via Ghostscript), or an Emmentaler/feta font | Emmentaler, feta, parmesan, LilyJAZZ | Vector dashes; leaves out the hyphen when syllables are squeezed together, so gaps under 0.1 em also join (`tight_join_ratio`); verse numbers are separate bold spans |
+
+Font names in PDFs often carry a subset prefix (`ABCDEF+Name`); the engine strips it before matching.
+
+### Adding a program
+
+1. Inspect real exports with PyMuPDF: `document.metadata`, `page.get_fonts()`, `page.get_text("rawdict")` spans, and `page.get_drawings()` near the lyric rows to see how hyphens are drawn.
+2. Subclass `LyricLayoutExtractor` and set `source`, `matches()`, `music_font_prefixes` and, only if needed, `tight_join_ratio`. Keep layout fixes in the shared engine, not the subclass.
+3. Register it in `SCORE_EXTRACTORS`. Re-run every sample you have from the other programs to confirm their output does not change.
+4. Add a test in `tests/test_upload_processing.py` that builds a small synthetic PDF with `fitz`. Commit a real sample as a fixture only if it is public domain or freely licensed; never commit copyrighted downloads.
+
+Known gaps: tempo markings above the first system can appear among the credits, and Sibelius lyrics sometimes lose the space between two words (`it'snearly`).
 
 ## Tests
 

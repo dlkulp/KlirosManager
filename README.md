@@ -8,6 +8,8 @@ Read more: [About](about/README.md)
 
 ## Dev stuff
 
+Shared notes for contributors and AI coding agents are kept in [AGENTS.md](AGENTS.md). Add durable lessons there or to the relevant README so they are checked in.
+
 ### Client
 
 cd into the /client folder, run `npm run dev` to run the front-end locally. Run `npm run build` to compile the ui and copy it into the /server folder for consumption there.

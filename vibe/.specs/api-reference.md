@@ -69,7 +69,7 @@ Full TypeScript declarations are in [api-client.ts](api-client.ts).
 | `MetadataDefinitionDto` | `id`, `Name`, `Type`, `Options` (string array or null), `Core`, `Extracted`, `Searchable`, optional `Required` |
 | `MetadataFieldDto` | Metadata definition plus `value: string` |
 | `ResourceDetailResponseDto` | `resource`, `original_name`, `uploader` (`Name`, `JoinedAt`, and, for known users, `UserID` and `UserType`; never `Email`), `uploader_initials`, `is_favorite`, `ocr`, `metadata`, `file_url`, `download_url` |
-| `OcrDto` | `status` (`success`, `unavailable`, `error`), `text`, `message`; detail's `ocr` may be empty when absent |
+| `OcrDto` | `status` (`success`, `unavailable`, `error`), `text`, `message`; when a notation-software extractor read the PDF, also `source` (e.g. `musescore`), `title`, and `lyrics` (one string per verse). Detail's `ocr` may be empty when absent |
 | `RankedMatchDto` | `resource_id`, `title`, `original_name`, `composer`, nullable `hamming_distance`, `title_similarity`, `composer_similarity`, numeric `confidence`, `detail_url`, `preview_url` |
 | `BinaryResponseDto` | Client-side envelope: `body: Blob`, `content_type`, `content_disposition`; these are not server JSON fields |
 
