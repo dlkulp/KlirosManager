@@ -3,29 +3,7 @@
     <div id="card-container" class="flex justify-center items-center column">
       <h4>Library</h4>
       <p v-if="emptyMessage">{{ emptyMessage }}</p>
-      <div id="all-works" class="fit row wrap justify-center items-start content-start">
-        <q-btn flat
-          v-for="(score, index) in allWorks"
-          :key="`${score.title}-${index}`"
-          :to="score.detail_url">
-          <q-card>
-            <q-card-section>
-              <img
-                :src="score.thumbnail_url || ''"
-                :srcset="score.thumbnail_srcset || ''"
-                sizes="(max-width: 600px) 45vw, (max-width: 900px) 30vw, 300px"
-                alt="Score thumbnail"
-                loading="lazy"
-                width="232"
-                height="300" />
-            </q-card-section>
-            <q-card-section class="title-section">
-              <strong>{{ score.title || score.OriginalName || "Untitled" }}</strong>
-              <p text-caption class="light">{{ getAttribution(score.MetaData) }}</p>
-            </q-card-section>
-          </q-card>
-        </q-btn>
-      </div>
+      <ScoreGrid v-if="allWorks" justify="center" :score-arr="allWorks"></ScoreGrid>
     </div>
   </q-page>
 </template>
@@ -33,25 +11,13 @@
 <style lang="scss" scoped>
 h1 {font-size: 3rem}
 h2 {font-size: 2rem}
-.title-section {
-  padding-top: 0px;
-}
-.title-section p {
-  color: $grey-6
-}
-.title-section strong {
-  font-size: 1.25rem;
-}
-#all-works a {
-  width: 300px;
-}
-#all-works .q-btn {
-  text-transform: none;
-}
-
+h4 {margin: 2rem 0rem 1rem}
 </style>
 
 <script setup lang="ts">
+import ScoreGrid, {
+  type ScoreGridProps
+} from "@/components/ScoreGrid.vue";
 import { onMounted, ref } from "vue";
 import { ResourceDto, KlirosApi, InferredMetadataValueDto } from "@/types/api-client";
 //import { getAttribution } from "@/helpers/helpers";

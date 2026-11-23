@@ -13,7 +13,33 @@
 
         <q-toolbar-title> Kliros Manager </q-toolbar-title>
 
-        <div>v0.0.1</div>
+        <q-btn v-if="!store.user" outline color="white" icon="login" v-on:click="login()">&nbsp;&nbsp;Login</q-btn>
+        <span v-else>
+          <q-btn-dropdown color="white" text-color="primary" class="text-capitalize" :label="store.user.user.Name" aria-haspopup="menu">
+            <q-list role="menu">
+              <q-item v-close-popup exact :to="`/profile/${store.user.user.UserID}`">
+                <q-item-section>
+                  <q-icon name="person" />
+                </q-item-section>
+                <q-item-section>
+                  <q-item-label>
+                    Profile
+                  </q-item-label>
+                </q-item-section>
+              </q-item>
+              <q-item v-close-popup @click="logout()">
+                <q-item-section>
+                  <q-icon name="logout" />
+                </q-item-section>
+                <q-item-section>
+                  <q-item-label>
+                    Log out
+                  </q-item-label>
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </q-btn-dropdown>
+        </span>
       </q-toolbar>
     </q-header>
 
@@ -37,17 +63,53 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { setCssVar, getCssVar, useQuasar } from "quasar";
+import { setCssVar, useQuasar } from "quasar";
 import EssentialLink, {
   type EssentialLinkProps
 } from "@/components/EssentialLink.vue";
 import { getLentRange, isDateInRange, getPaschaltideRange, getPentecostRange, getPalmSundayRange, dateStripYear, colors } from "@/helpers/helpers";
+import { KlirosApi, LoginResponseDto, LogoutResponseDto } from "@/types/api-client";
+import { store } from "@/helpers/store";
 
 const $q = useQuasar();
+const api = new KlirosApi();
+const authResp = ref<LoginResponseDto | LogoutResponseDto>();
 
-onMounted(() => {
+async function login() {
+  try {
+    authResp.value = await api.login();
+    store.user = await api.getProfile();
+    store.isLoggedIn = true;
+  }
+  catch (error) {
+    console.log(error);
+  }
+}
+
+async function logout() {
+  try {
+    authResp.value = await api.logout();
+    store.user = null;
+    store.isLoggedIn = false;
+  }
+  catch (error) {
+    console.log(error);
+  }
+}
+
+onMounted(async () => {
   const todayDate: Date = new Date();
   let currYear = todayDate.getFullYear();
+
+  if (!store.user) {
+    try {
+      store.user = await api.getProfile();
+      if (store.user)
+        store.isLoggedIn = true;
+    }
+    catch (error) {
+    }
+  }
 
   // Feasts in Red
   if (

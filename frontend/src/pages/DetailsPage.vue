@@ -1,6 +1,6 @@
 <template>
   <q-page v-if="detail">
-    <div id="center-stripe">
+    <div class="center-stripe">
       <section class="lighten q-pa-md">
         <h4>{{ title }}</h4>
         <p v-if="!english">{{ detail.resource.DisplayName }}</p>
@@ -71,35 +71,15 @@
 </template>
 
 <style scoped lang="scss">
-h4 {
-  margin-bottom: 0px;
-  margin-top: 1.2rem;
-}
-h6 {
-  margin-bottom: 0px;
-  margin-top: 0px;
-}
-@media only screen and (min-width: 1440px) {
-  #center-stripe {
-    width: 75%;
-    margin-left:auto;
-    margin-right:auto;
-  }
-}
-#center-stripe {
-  max-width: 1200px;
-  margin-left:auto;
-  margin-right:auto;
-}
 #info {
   height: auto !important;
 }
 </style>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { ResourceDetailResponseDto, KlirosApi } from "@/types/api-client";
-
+import { store } from "@/helpers/store";
 import { PdfViewer } from "vue-pdfz";
 import "vue-pdfz/style.css";
 
@@ -112,7 +92,11 @@ const api = new KlirosApi();
 const title = ref<string>();
 const english = ref<boolean>(true);
 const attribution = ref<string>();
-const owner = ref<boolean>(false);
+const owner = computed(() => {
+  if (detail.value)
+    return detail.value.uploader.UserID === store.user?.user.UserID;
+  return false;
+});
 
 onMounted(async() => {
   try {
@@ -120,7 +104,6 @@ onMounted(async() => {
     english.value = detail.value.metadata?.["English Title"] === undefined;
     title.value = detail.value.metadata?.["English Title"] || detail.value.resource.title || "Untitled";
     attribution.value = detail.value.metadata?.["Composer"] || detail.value.metadata?.["Arranger"] || "Unknown";
-    owner.value = detail.value.uploader.UserID === 1;
     let joinDate = new Date(detail.value.uploader.JoinedAt);
     detail.value.uploader.JoinedAt = `${joinDate.getMonth()+1}/${joinDate.getFullYear()}`;
   } catch (error) {
