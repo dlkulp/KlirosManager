@@ -76,7 +76,7 @@ apiv1.post("/scores/review", isLoggedIn, async (req: any, res) => {
 		where: {
 			UserID: req.session.user.UserID,
 			Reviewed: false,
-			Hidden: false
+			OR: [{ Deleted: false }, { Deleted: null }]
 		},
 		select: {
 			DisplayName: true,
@@ -89,25 +89,26 @@ apiv1.post("/scores/review", isLoggedIn, async (req: any, res) => {
 });
 
 apiv1.delete("/scores/:id", isLoggedIn, async (req:any, res) => {
+	const user = req.session.user;
+	const canDeleteAny = user.UserType === "admin" || user.UserType === "moderator";
 	const score = await prisma.resource.findFirst({
 		where: {
-			id: req.params.uid,
-			UserID: req.session.user.UserID
+			id: Number(req.params.id),
+			OR: [{ Deleted: false }, { Deleted: null }],
+			...(canDeleteAny ? {} : { UserID: user.UserID })
 		}
 	});
 	if (score) {
 		try {
-			const blobName = `${score.id}-${score.OriginalName}`;
-			const containerClient = await blobServiceClient.getContainerClient(containerNameScores);
-			const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-			const blobDeleteResponse = blockBlobClient.delete();
-			console.log((await blobDeleteResponse).clientRequestId);
-			await prisma.resource.delete({
+			await prisma.resource.update({
 				where: {
 					id: score.id
+				},
+				data: {
+					Deleted: true
 				}
 			});
-			res.status(200).send({message: `Deleted resource: ${blobName}}`});
+			res.status(200).send({ message: `Soft-deleted resource: ${score.id}`, deleted: true });
 		} catch(err) {
 			res.status(500).send({message: err});
 		}

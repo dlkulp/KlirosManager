@@ -7,11 +7,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum UserType {
+  regular
+  moderator
+  admin
+}
+
 model collection {
   id                Int                 @id @default(autoincrement())
   Name              String              @db.VarChar(255)
   Public            Boolean?            @default(false)
   UserId            Int?
+  CreationDate      DateTime?           @default(now()) @db.DateTime(0)
   user              user?               @relation(fields: [UserId], references: [UserID], onDelete: Restrict, onUpdate: Restrict, map: "collection_ibfk_1")
   collection_member collection_member[]
 
@@ -53,13 +60,13 @@ model favorites {
 }
 
 model metadata {
-  id        Int     @id @default(autoincrement())
-  Name      String  @db.VarChar(255)
-  Type      String  @db.VarChar(255)
-  Options   Json?
-  Core      Boolean @default(false)
-  Extracted Boolean @default(false)
-  Required  Boolean @default(false)
+  id         Int     @id @default(autoincrement())
+  Name       String  @db.VarChar(255)
+  Type       String  @db.VarChar(255)
+  Options    Json?
+  Core       Boolean @default(false)
+  Extracted  Boolean @default(false)
+  Searchable Boolean @default(false)
 }
 
 model resource {
@@ -71,18 +78,23 @@ model resource {
   Source            String?             @db.VarChar(255)
   UserID            Int
   Reviewed          Boolean?            @default(false)
+  ReviewerId        Int?
+  ReviewedAt        DateTime?           @db.DateTime(0)
   Public            Boolean?            @default(false)
   VisualHash        String?             @db.VarChar(255)
   FileHash          String?             @db.VarChar(64)
-  Hidden            Boolean?            @default(false)
+  Deleted           Boolean?            @default(false)
+  DownloadCount     Int?                @default(0)
   resource          resource?           @relation("resourceToresource_GroupID", fields: [GroupID], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "resource_ibfk_2")
   user              user                @relation(fields: [UserID], references: [UserID], onDelete: Restrict, onUpdate: Restrict, map: "resource_ibfk_1")
+  reviewer          user?               @relation("resourceReviewedByUser", fields: [ReviewerId], references: [UserID], onDelete: Restrict, onUpdate: Restrict, map: "resource_ibfk_3")
   collection_member collection_member[]
   other_resource    resource[]          @relation("resourceToresource_GroupID")
   favorites         favorites[]
 
   @@index([UserID], map: "UserID")
   @@index([GroupID], map: "resource_ibfk_2")
+  @@index([ReviewerId], map: "resource_ibfk_3")
 }
 
 model user {
@@ -90,8 +102,10 @@ model user {
   Name                 String                 @db.VarChar(255)
   Email                String                 @db.VarChar(255)
   JoinedAt             DateTime               @default(now()) @db.DateTime(0)
+  UserType             UserType               @default(regular)
   collection           collection[]
   federated_credential federated_credential[]
   favorites             favorites[]
   resource             resource[]
+  reviewed_resource    resource[]             @relation("resourceReviewedByUser")
 }

@@ -6,6 +6,29 @@ from pathlib import Path
 from data_manager import DataManager, METADATA_SEED
 
 
+def _downgrade_to_schema_8(database):
+    resource = database["tables"]["resource"]
+    resource["columns"] = [
+        column for column in resource["columns"]
+        if column["name"] not in {"ReviewerId", "ReviewedAt"}
+    ]
+    for column in resource["columns"]:
+        if column["name"] == "Deleted":
+            column["name"] = "Hidden"
+    for row in resource["rows"]:
+        row["Hidden"] = row.pop("Deleted", False)
+        row.pop("ReviewerId", None)
+        row.pop("ReviewedAt", None)
+
+    collection = database["tables"]["collection"]
+    collection["columns"] = [
+        column for column in collection["columns"]
+        if column["name"] != "CreationDate"
+    ]
+    for row in collection["rows"]:
+        row.pop("CreationDate", None)
+
+
 class DataManagerTests(unittest.TestCase):
     def setUp(self):
         self.temporary_directory = tempfile.TemporaryDirectory()
@@ -20,18 +43,24 @@ class DataManagerTests(unittest.TestCase):
         self.assertEqual(manager.table("resource")["columns"][0]["name"], "id")
         owner = manager.rows("user")[0]
         self.assertEqual(owner["UserID"], 1)
-        self.assertEqual(owner["Name"], "Local Owner")
-        self.assertEqual(owner["Email"], "local@kliros.invalid")
+        self.assertEqual(owner["Name"], "Local Admin")
+        self.assertEqual(owner["Email"], "admin@kliros.invalid")
         self.assertTrue(owner["JoinedAt"])
         self.assertEqual(owner["UserType"], "admin")
+        self.assertEqual(
+            [(user["Name"], user["UserType"]) for user in manager.rows("user")],
+            [("Local Admin", "admin"), ("Local Moderator", "moderator"), ("Local User", "regular")],
+        )
         self.assertEqual(len(manager.metadata_definitions()), len(METADATA_SEED))
         tradition = next(row for row in manager.metadata_definitions() if row["Name"] == "Tradition")
         self.assertIn("Byzantine", tradition["Options"])
         self.assertTrue(manager.metadata_definitions()[0]["Core"])
         self.assertEqual(manager.metadata_definitions()[2]["Type"], "string")
         database = json.loads(database_path.read_text(encoding="utf-8"))
-        self.assertEqual(database["schema_version"], 8)
+        self.assertEqual(database["schema_version"], 9)
         self.assertIn("FileHash", [column["name"] for column in manager.table("resource")["columns"]])
+        self.assertIn("ReviewerId", [column["name"] for column in manager.table("resource")["columns"]])
+        self.assertIn("CreationDate", [column["name"] for column in manager.table("collection")["columns"]])
         self.assertEqual(manager.rows("favorites"), [])
 
     def test_resource_rows_persist_with_stable_ids_and_valid_references(self):
@@ -66,14 +95,33 @@ class DataManagerTests(unittest.TestCase):
         first = manager.insert_resource({"OriginalName": "score.png", "UserID": 1})
         second = manager.insert_resource({"OriginalName": "part.png", "UserID": 1, "GroupID": first["id"]})
 
-        deleted = manager.delete_resource(first["id"])
+        deleted = manager.delete_resource(first["id"], 1)
 
         self.assertEqual(deleted["OriginalName"], "score.png")
-        self.assertTrue(deleted["Hidden"])
+        self.assertTrue(deleted["Deleted"])
         self.assertEqual([row["id"] for row in manager.rows("resource")], [first["id"], second["id"]])
         self.assertEqual([row["id"] for row in manager.visible_resources()], [second["id"]])
         self.assertEqual(manager.rows("resource")[1]["GroupID"], first["id"])
-        self.assertIsNone(manager.delete_resource(first["id"]))
+        self.assertIsNone(manager.delete_resource(first["id"], 1))
+
+    def test_regular_users_can_delete_only_their_own_resources(self):
+        manager = DataManager(self.tmp_path / "db.json")
+        own = manager.insert_resource({"OriginalName": "own.pdf", "UserID": 3})
+        someone_elses = manager.insert_resource({"OriginalName": "other.pdf", "UserID": 1})
+
+        with self.assertRaisesRegex(PermissionError, "only delete resources they uploaded"):
+            manager.delete_resource(someone_elses["id"], 3)
+
+        self.assertTrue(manager.delete_resource(own["id"], 3)["Deleted"])
+        self.assertFalse(someone_elses["Deleted"])
+
+    def test_moderators_and_admins_can_delete_any_resource(self):
+        manager = DataManager(self.tmp_path / "db.json")
+        resource = manager.insert_resource({"OriginalName": "score.pdf", "UserID": 3})
+
+        self.assertTrue(manager.delete_resource(resource["id"], 2)["Deleted"])
+        other = manager.insert_resource({"OriginalName": "other.pdf", "UserID": 3})
+        self.assertTrue(manager.delete_resource(other["id"], 1)["Deleted"])
 
     def test_migrates_joined_at_for_existing_users_without_losing_resources(self):
         database_path = self.tmp_path / "db.json"
@@ -81,12 +129,15 @@ class DataManagerTests(unittest.TestCase):
         manager.insert_resource({"OriginalName": "existing.pdf", "UserID": 1})
         database = json.loads(database_path.read_text(encoding="utf-8"))
         database["schema_version"] = 5
-        database["tables"]["user"]["columns"] = [
+        _downgrade_to_schema_8(database)
+        user_table = database["tables"]["user"]
+        user_table["rows"] = [user_table["rows"][0]]
+        user_table["columns"] = [
             column for column in database["tables"]["user"]["columns"]
             if column["name"] not in {"JoinedAt", "UserType"}
         ]
-        database["tables"]["user"]["rows"][0].pop("JoinedAt")
-        database["tables"]["user"]["rows"][0].pop("UserType")
+        user_table["rows"][0].pop("JoinedAt")
+        user_table["rows"][0].pop("UserType")
         database_path.write_text(json.dumps(database), encoding="utf-8")
 
         migrated = DataManager(database_path)
@@ -94,7 +145,7 @@ class DataManagerTests(unittest.TestCase):
         self.assertEqual(migrated.rows("resource")[0]["OriginalName"], "existing.pdf")
         self.assertTrue(migrated.rows("user")[0]["JoinedAt"])
         self.assertEqual(migrated.rows("user")[0]["UserType"], "admin")
-        self.assertEqual(json.loads(database_path.read_text(encoding="utf-8"))["schema_version"], 8)
+        self.assertEqual(json.loads(database_path.read_text(encoding="utf-8"))["schema_version"], 9)
 
     def test_migrates_user_types_and_updates_only_regular_or_moderator_users(self):
         database_path = self.tmp_path / "db.json"
@@ -102,16 +153,17 @@ class DataManagerTests(unittest.TestCase):
         resource = manager.insert_resource({"OriginalName": "existing.pdf", "UserID": 1})
         database = json.loads(database_path.read_text(encoding="utf-8"))
         database["schema_version"] = 7
+        _downgrade_to_schema_8(database)
         user_table = database["tables"]["user"]
         user_table["columns"] = [column for column in user_table["columns"] if column["name"] != "UserType"]
         for user in user_table["rows"]:
             user.pop("UserType")
-        user_table["rows"].append({
+        user_table["rows"] = [user_table["rows"][0], {
             "UserID": 2,
             "Name": "Regular user",
             "Email": "regular@example.test",
             "JoinedAt": "2026-01-01 00:00:00",
-        })
+        }]
         database_path.write_text(json.dumps(database), encoding="utf-8")
 
         migrated = DataManager(database_path)
@@ -120,11 +172,34 @@ class DataManagerTests(unittest.TestCase):
         self.assertEqual(migrated.rows("resource")[0]["id"], resource["id"])
         self.assertEqual(migrated.update_user_type(2, "moderator")["UserType"], "moderator")
         self.assertEqual(migrated.update_user_type(2, "regular")["UserType"], "regular")
-        self.assertIsNone(migrated.update_user_type(3, "regular"))
+        self.assertIsNone(migrated.update_user_type(999, "regular"))
         with self.assertRaisesRegex(ValueError, "regular or moderator"):
             migrated.update_user_type(2, "admin")
         with self.assertRaisesRegex(ValueError, "Admin users"):
             migrated.update_user_type(1, "regular")
+
+    def test_migrates_hidden_resources_and_existing_collections_to_deleted_schema(self):
+        database_path = self.tmp_path / "db.json"
+        manager = DataManager(database_path)
+        resource = manager.insert_resource({"OriginalName": "old.pdf", "UserID": 1})
+        manager.delete_resource(resource["id"], 1)
+        collection = manager.create_collection(1, "Existing")
+        database = json.loads(database_path.read_text(encoding="utf-8"))
+        _downgrade_to_schema_8(database)
+        database["schema_version"] = 8
+        database_path.write_text(json.dumps(database), encoding="utf-8")
+
+        migrated = DataManager(database_path)
+
+        resource_row = migrated.rows("resource")[0]
+        self.assertTrue(resource_row["Deleted"])
+        self.assertNotIn("Hidden", resource_row)
+        self.assertIsNone(resource_row["ReviewerId"])
+        self.assertIsNone(resource_row["ReviewedAt"])
+        self.assertTrue(migrated.rows("collection")[0]["CreationDate"])
+        self.assertEqual(migrated.rows("collection")[0]["id"], collection["id"])
+        saved = json.loads(database_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["schema_version"], 9)
 
     def test_favorites_toggle_and_collection_members_are_private_and_unordered(self):
         manager = DataManager(self.tmp_path / "db.json")
@@ -139,6 +214,7 @@ class DataManagerTests(unittest.TestCase):
 
         collection = manager.create_collection(1, "Vespers")
         self.assertFalse(collection["Public"])
+        self.assertTrue(collection["CreationDate"])
         self.assertTrue(manager.add_resource_to_collection(1, collection["id"], resource["id"]))
         self.assertFalse(manager.add_resource_to_collection(1, collection["id"], resource["id"]))
         member = manager.rows("collection_member")[0]

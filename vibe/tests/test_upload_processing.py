@@ -86,17 +86,7 @@ class UploadRouteTests(unittest.TestCase):
         self.assertEqual(response.headers["Access-Control-Allow-Origin"], "https://frontend.example")
 
     def test_admin_can_switch_regular_and_moderator_but_cannot_assign_admin(self):
-        data_manager = self.app.extensions["data_manager"]
-        database = json.loads((self.root / "db.json").read_text(encoding="utf-8"))
-        database["tables"]["user"]["rows"].append({
-            "UserID": 2,
-            "Name": "Choir member",
-            "Email": "member@example.test",
-            "JoinedAt": "2026-01-01 00:00:00",
-            "UserType": "regular",
-        })
-        data_manager._write(database)
-        endpoint = "/api/admin/users/2/type"
+        endpoint = "/api/admin/users/3/type"
 
         self.assertEqual(self.client.patch(endpoint, json={"user_type": "moderator"}).status_code, 401)
         self.login_demo()
@@ -107,16 +97,16 @@ class UploadRouteTests(unittest.TestCase):
 
         moderator = self.client.patch(endpoint, json={"user_type": "moderator"})
         self.assertEqual(moderator.status_code, 200)
-        self.assertEqual(moderator.get_json(), {"user_id": 2, "user_type": "moderator"})
+        self.assertEqual(moderator.get_json(), {"user_id": 3, "user_type": "moderator"})
         regular = self.client.patch(endpoint, json={"user_type": "regular"})
         self.assertEqual(regular.status_code, 200)
-        self.assertEqual(data_manager.get_user(2)["UserType"], "regular")
+        self.assertEqual(self.app.extensions["data_manager"].get_user(3)["UserType"], "regular")
 
         with self.client.session_transaction() as session_data:
-            session_data["user_id"] = 2
+            session_data["user_id"] = 3
         forbidden = self.client.patch(endpoint, json={"user_type": "moderator"})
         self.assertEqual(forbidden.status_code, 403)
-        self.assertEqual(data_manager.get_user(2)["UserType"], "regular")
+        self.assertEqual(self.app.extensions["data_manager"].get_user(3)["UserType"], "regular")
 
     def test_session_cookie_sets_configured_samesite_and_secure_flags(self):
         local_cookie = self.client.post("/api/login").headers["Set-Cookie"]
@@ -442,7 +432,7 @@ class UploadRouteTests(unittest.TestCase):
         self.assertIn("Not sheet music", detail)
         self.assertIn("Questionable", detail)
         self.assertIn("Copyright", detail)
-        self.assertEqual(payload["uploader"]["Name"], "Local Owner")
+        self.assertEqual(payload["uploader"]["Name"], "Local Admin")
         self.assertNotIn("Email", payload["uploader"])
         self.assertEqual(
             set(payload["uploader"]),
@@ -512,7 +502,7 @@ class UploadRouteTests(unittest.TestCase):
         profile_payload = self.client.get("/api/profile").get_json()
         self.assertEqual(page.status_code, 200)
         self.assertIn('id="profile-content"', page_html)
-        self.assertEqual(profile_payload["user"]["Name"], "Local Owner")
+        self.assertEqual(profile_payload["user"]["Name"], "Local Admin")
         self.assertEqual(profile_payload["uploads"][0]["title"], "Evening Hymn")
         self.assertEqual(profile_payload["collections"][0]["Name"], "Vespers")
 
@@ -536,16 +526,15 @@ class UploadRouteTests(unittest.TestCase):
     def test_profile_by_id_hides_private_data_from_guests_and_other_users(self):
         data_manager = self.app.extensions["data_manager"]
         database = json.loads((self.root / "db.json").read_text(encoding="utf-8"))
-        other_user = dict(database["tables"]["user"]["rows"][0])
-        other_user.update({"UserID": 2, "Name": "Other user", "Email": "other@example.test"})
-        database["tables"]["user"]["rows"].append(other_user)
+        other_user = database["tables"]["user"]["rows"][2]
+        other_user.update({"Name": "Other user", "Email": "other@example.test"})
         data_manager._write(database)
-        resource = data_manager.insert_resource({"OriginalName": "other.pdf", "UserID": 2})
+        resource = data_manager.insert_resource({"OriginalName": "other.pdf", "UserID": 3})
         data_manager.insert_resource({"OriginalName": "mine.pdf", "UserID": 1})
-        data_manager.insert_resource({"OriginalName": "hidden.pdf", "UserID": 2, "Hidden": True})
-        data_manager.toggle_favorite(2, resource["id"])
-        collection = data_manager.create_collection(2, "Private collection")
-        data_manager.add_resource_to_collection(2, collection["id"], resource["id"])
+        data_manager.insert_resource({"OriginalName": "deleted.pdf", "UserID": 3, "Deleted": True})
+        data_manager.toggle_favorite(3, resource["id"])
+        collection = data_manager.create_collection(3, "Private collection")
+        data_manager.add_resource_to_collection(3, collection["id"], resource["id"])
         database = json.loads((self.root / "db.json").read_text(encoding="utf-8"))
         database["tables"]["collection"]["rows"][0]["Public"] = True
         data_manager._write(database)
@@ -557,7 +546,7 @@ class UploadRouteTests(unittest.TestCase):
                     if viewer_id is not None:
                         session_data["user_id"] = viewer_id
                 with patch.object(data_manager, "collections_for_user") as collections_for_user:
-                    response = self.client.get("/api/profile/2")
+                    response = self.client.get("/api/profile/3")
                 collections_for_user.assert_not_called()
                 self.assertEqual(response.status_code, 200)
                 payload = response.get_json()
@@ -584,7 +573,7 @@ class UploadRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(payload, self.client.get("/api/profile").get_json())
-        self.assertEqual(payload["user"]["Email"], "local@kliros.invalid")
+        self.assertEqual(payload["user"]["Email"], "admin@kliros.invalid")
         self.assertEqual([work["id"] for work in payload["favorites"]], [resource["id"]])
         self.assertEqual([item["id"] for item in payload["collections"]], [collection["id"]])
         self.assertEqual(payload["collections"][0]["items"][0]["id"], resource["id"])
@@ -607,17 +596,16 @@ class UploadRouteTests(unittest.TestCase):
         data_manager = self.app.extensions["data_manager"]
         database_path = self.root / "db.json"
         database = json.loads(database_path.read_text(encoding="utf-8"))
-        other_user = dict(database["tables"]["user"]["rows"][0])
-        other_user.update({"UserID": 2, "Name": "Other user", "Email": "other@example.test", "ProfileID": "other"})
-        database["tables"]["user"]["rows"].append(other_user)
+        other_user = database["tables"]["user"]["rows"][2]
+        other_user.update({"Name": "Other user", "Email": "other@example.test", "ProfileID": "other"})
         database_path.write_text(json.dumps(database), encoding="utf-8")
         resource = data_manager.insert_resource({
             "OriginalName": "favorite.pdf", "DisplayName": "Favorite Hymn", "UserID": 1,
         })
-        other_resource = data_manager.insert_resource({"OriginalName": "other.pdf", "UserID": 2})
+        other_resource = data_manager.insert_resource({"OriginalName": "other.pdf", "UserID": 3})
         data_manager.toggle_favorite(1, resource["id"])
-        data_manager.toggle_favorite(2, resource["id"])
-        data_manager.toggle_favorite(2, other_resource["id"])
+        data_manager.toggle_favorite(3, resource["id"])
+        data_manager.toggle_favorite(3, other_resource["id"])
         endpoint = f"/api/library/{resource['id']}/favorite"
         self.assertEqual(self.client.delete(endpoint).status_code, 401)
 
@@ -634,8 +622,8 @@ class UploadRouteTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertFalse(response.get_json()["is_favorite"])
         self.assertEqual(self.client.get("/api/profile").get_json()["favorites"], [])
-        self.assertTrue(data_manager.is_favorite(2, resource["id"]))
-        self.assertTrue(data_manager.is_favorite(2, other_resource["id"]))
+        self.assertTrue(data_manager.is_favorite(3, resource["id"]))
+        self.assertTrue(data_manager.is_favorite(3, other_resource["id"]))
         self.assertIsNotNone(data_manager.get_user(1))
         self.assertEqual(len(data_manager.rows("resource")), 2)
         self.assertEqual(self.client.delete("/api/library/9999/favorite").status_code, 404)
@@ -765,7 +753,7 @@ class UploadRouteTests(unittest.TestCase):
         data_manager.insert_resource({
             "OriginalName": "hidden.pdf",
             "UserID": 1,
-            "Hidden": True,
+            "Deleted": True,
             "MetaData": {"Service": "Hidden-only service", "Language": "Hidden-only language"},
         })
 
@@ -907,10 +895,10 @@ class UploadRouteTests(unittest.TestCase):
             row for row in self.app.extensions["data_manager"].rows("resource")
             if row["id"] == resource_id
         )
-        self.assertTrue(deleted_row["Hidden"])
-        self.assertIsNone(self.app.extensions["data_manager"].delete_resource(resource_id))
+        self.assertTrue(deleted_row["Deleted"])
+        self.assertIsNone(self.app.extensions["data_manager"].delete_resource(resource_id, 1))
 
-    def test_hidden_resources_are_omitted_from_reads_but_keep_relationships(self):
+    def test_deleted_resources_are_omitted_from_reads_but_keep_relationships(self):
         self.login_demo()
         data_manager = self.app.extensions["data_manager"]
         upload_folder = self.root / "uploads"
@@ -939,7 +927,7 @@ class UploadRouteTests(unittest.TestCase):
         deleted = self.client.delete(f"/api/library/{hidden['id']}")
 
         self.assertEqual(deleted.status_code, 200)
-        self.assertEqual(deleted.get_json(), {"deleted": True, "hidden": True, "resource_id": hidden["id"]})
+        self.assertEqual(deleted.get_json(), {"deleted": True, "resource_id": hidden["id"]})
         self.assertTrue(source.exists())
         self.assertEqual(self.client.get(f"/library/{hidden['id']}").status_code, 404)
         self.assertEqual(data_manager.find_resource_by_file_hash("hidden-file-hash"), None)
@@ -1038,6 +1026,23 @@ class UploadRouteTests(unittest.TestCase):
         signed_in_detail = self.client.get(f"/library/{resource['id']}").get_data(as_text=True)
         self.assertIn('id="delete-resource-form"', signed_in_detail)
         self.assertIn('id="edit-metadata-button"', signed_in_detail)
+
+    def test_resource_delete_permissions_are_role_aware(self):
+        data_manager = self.app.extensions["data_manager"]
+        owner_resource = data_manager.insert_resource({"OriginalName": "owner.pdf", "UserID": 3})
+        admin_resource = data_manager.insert_resource({"OriginalName": "admin.pdf", "UserID": 1})
+
+        self.assertEqual(self.client.delete(f"/api/library/{owner_resource['id']}").status_code, 401)
+
+        with self.client.session_transaction() as session_data:
+            session_data["user_id"] = 3
+        self.assertEqual(self.client.delete(f"/api/library/{admin_resource['id']}").status_code, 403)
+        self.assertFalse(data_manager.rows("resource")[1]["Deleted"])
+        self.assertEqual(self.client.delete(f"/api/library/{owner_resource['id']}").status_code, 200)
+
+        with self.client.session_transaction() as session_data:
+            session_data["user_id"] = 2
+        self.assertEqual(self.client.delete(f"/api/library/{admin_resource['id']}").status_code, 200)
 
 
 class FileProcessingTests(unittest.TestCase):

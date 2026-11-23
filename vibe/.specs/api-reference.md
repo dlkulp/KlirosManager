@@ -55,13 +55,13 @@ Full TypeScript declarations are in [api-client.ts](api-client.ts).
 | --- | --- |
 | `UserDto` | `UserID`, `Name`, `Email`, `JoinedAt` (local date/time string, no timezone), `UserType` (`regular`, `moderator`, `admin`) |
 | `SessionResponseDto` | `{logged_in: true, user: UserDto}` or `{logged_in: false, user: null}` |
-| `ResourceDto` | Visible resource fields `id`, `DisplayName`, `OriginalName`, `MetaData`, `GroupID`, `Source`, `UserID`, `Reviewed`, `Public`, `Hidden` (false/null), `VisualHash`, `FileHash`; optional `DownloadCount`; derived `title`, `thumbnail_url`, `thumbnail_srcset`, `thumbnail_sizes`, `detail_url`, `api_url` |
+| `ResourceDto` | Visible resource fields `id`, `DisplayName`, `OriginalName`, `MetaData`, `GroupID`, `Source`, `UserID`, `Reviewed`, `ReviewerId`, `ReviewedAt`, `Public`, `Deleted` (false/null), `VisualHash`, `FileHash`; optional `DownloadCount`; derived `title`, `thumbnail_url`, `thumbnail_srcset`, `thumbnail_sizes`, `detail_url`, `api_url` |
 | `HomeResponseDto` | `recent_works: ResourceDto[]`, latest three resource IDs first |
 | `LibraryResponseDto` | `works: ResourceDto[]`, all resources, descending ID |
 | `SearchResponseDto` | `results: SearchResourceDto[]`, `total`, `page`, `page_size`, `page_count` |
 | `SearchResourceDto` | `ResourceDto` plus `metadata: Record<string, string>`, `uploaded_at`, and `popularity` |
 | `SearchFacetsResponseDto` | `facets: Record<string, string[]>`, searchable metadata fields and their choices |
-| `CollectionDto` | `id`, `Name`, `Public`, `UserId` |
+| `CollectionDto` | `id`, `Name`, `Public`, `UserId`, `CreationDate` |
 | `PublicProfileResponseDto` | `user` with `UserID`, `Name`, `JoinedAt`, `UserType` (no `Email`), `initials`, `uploads`; no `favorites` or `collections` keys |
 | `ProfileResponseDto` | Owner response: public profile fields plus `user.Email`, `favorites`, `collections`; each collection adds `items: ResourceDto[]` |
 | `UpdateProfileResponseDto` | `user: UserDto`, the updated current user |
@@ -112,7 +112,7 @@ Collection authorization is ownership-based regardless of `Public`. There are no
 
 ## User Types
 
-The SQL and JSON schemas use a `UserType` enum with `regular`, `moderator`, and `admin`; new database users default to `regular`, while the seeded `Local Owner` is `admin`. Existing JSON database schema-version-7 accounts migrate to `regular`, except user ID 1, which remains/becomes `admin`.
+The SQL and JSON schemas use a `UserType` enum with `regular`, `moderator`, and `admin`; new database users default to `regular`, while the seeded `Local Admin` is `admin`. Existing JSON database schema-version-7 accounts migrate to `regular`, except user ID 1, which remains/becomes `admin`.
 
 `PATCH /api/admin/users/{userId}/type` accepts `{"user_type":"moderator"}` or `{"user_type":"regular"}` and returns `{ "user_id": number, "user_type": "regular" | "moderator" }`. Only a signed-in admin can call it. Anonymous requests return 401, signed-in non-admin requests return 403, unknown users return 404, and invalid input returns 400. Admin users cannot be demoted through this endpoint, and the endpoint cannot grant admin status.
 
@@ -170,17 +170,18 @@ Title is required, trimmed, and limited to 255 characters. `metadata` is optiona
 - `/file` returns the original inline with its detected media type (fallback `application/octet-stream`).
 - `/download` returns the original attachment. `Content-Disposition` provides a sanitized title/composer filename (arranger fallback), preserving the original extension. Download counts are not incremented.
 - `/thumbnail` and `/thumbnail/{height}` return PNGs at height 300 or 600, with approximate widths 232 or 464. Missing thumbnails may be generated lazily. Unsupported height, missing record/source, or generation failure returns 404.
-- Resource lists, search results/facets, profile uploads/favorites/collection items, duplicate checks, match candidates, detail pages/APIs, and media endpoints omit or return 404 for hidden resources.
-- DELETE resource soft-deletes by setting `Hidden: true` and returns `{deleted: true, hidden: true, resource_id}`. It keeps the row, source and thumbnails, group references, favorites, and collection memberships. Repeating DELETE returns 404. Hidden resources can still be inspected in the local database but are not returned by public resource endpoints.
+- Resource lists, search results/facets, profile uploads/favorites/collection items, duplicate checks, match candidates, detail pages/APIs, and media endpoints omit or return 404 for deleted resources.
+- DELETE resource soft-deletes by setting `Deleted: true` and returns `{deleted: true, resource_id}`. It keeps the row, source and thumbnails, group references, favorites, and collection memberships. Repeating DELETE returns 404. Deleted resources can still be inspected in the local database but are not returned by public resource endpoints.
+- Admins and moderators can delete any resource. Regular users can delete only resources whose `UserID` matches their own; a signed-in non-owner receives 403. The delete control is shown only when the current user has permission.
 - File/thumbnail routes can return conditional HTTP 304; the wrapper does not send conditional headers by default. A custom fetch that returns an uncached 304 will be treated as an error.
 
 ## Errors and PoC Limits
 
-Most API errors contain `{error: string}` with optional `status: "error"`, but Flask `abort()` responses and unexpected exceptions can be HTML. Common codes are 400 (invalid input), 401 (login required), 404 (missing/unowned resource or collection), 413 (request too large), 415 (unsupported/mismatched upload), 422 (not sheet music), 500 (processing/internal failure), and 503 (image validation dependency unavailable).
+Most API errors contain `{error: string}` with optional `status: "error"`, but Flask `abort()` responses and unexpected exceptions can be HTML. Common codes are 400 (invalid input), 401 (login required), 403 (insufficient permission), 404 (missing/unowned resource or collection), 413 (request too large), 415 (unsupported/mismatched upload), 422 (not sheet music), 500 (processing/internal failure), and 503 (image validation dependency unavailable).
 
 `KlirosApi` throws `ApiError` with `status` and the parsed error JSON or raw response text in `body`. Recognized import 422 rejections are returned as the discriminated union instead. Network failures and aborts propagate fetch's native errors. The wrapper does not retry mutations. Any injected fetch adapter must also avoid blind retries of POST/PATCH operations.
 
-Current authorization limits: metadata update and resource deletion require login but **not uploader ownership**; all signed-in users can edit/delete a work. Public read APIs filter hidden resources but do not filter by `Public`. The local JSON store supports one process, not concurrent multi-instance writers. CORS is an origin-sharing policy, not authentication or CSRF protection; the demo login and other production security controls remain unsuitable for production.
+Current authorization limits: metadata updates require login but do not require uploader ownership. Public read APIs filter deleted resources but do not filter by `Public`. The local JSON store supports one process, not concurrent multi-instance writers. CORS is an origin-sharing policy, not authentication or CSRF protection; the demo login and other production security controls remain unsuitable for production.
 
 ## Legacy and Static Routes
 
@@ -189,7 +190,7 @@ These routes are not used by the typed client:
 | Route | Behavior |
 | --- | --- |
 | GET `/`, `/library`, `/search`, `/profile`, `/import` | Static HTML shells |
-| GET `/library/{id}` | Detail HTML shell for a visible resource; hidden/missing resources return 404 |
+| GET `/library/{id}` | Detail HTML shell for a visible resource; deleted/missing resources return 404 |
 | POST `/login`, `/logout` | Demo session actions followed by 302 redirect |
 | POST `/library/import/check`, PATCH `/library/{id}` | Aliases of the API import/update routes |
 | POST `/library/{id}/favorite`, `/library/{id}/collections` | Aliases of API mutations; no legacy DELETE favorite alias |

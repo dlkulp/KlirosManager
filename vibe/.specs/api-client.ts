@@ -24,8 +24,10 @@ export interface ResourceDto {
   Source: string | null;
   UserID: number;
   Reviewed: boolean | null;
+  ReviewerId: number | null;
+  ReviewedAt: string | null;
   Public: boolean | null;
-  Hidden: boolean | null;
+  Deleted: boolean | null;
   VisualHash: string | null;
   FileHash: string | null;
   DownloadCount?: number | null;
@@ -68,6 +70,7 @@ export interface CollectionDto {
   Name: string;
   Public: boolean | null;
   UserId: number | null;
+  CreationDate: string | null;
 }
 export interface ProfileCollectionDto extends CollectionDto { items: ResourceDto[] }
 export interface PublicProfileResponseDto {
@@ -144,7 +147,7 @@ export interface UpdateResourceResponseDto {
   matches: RankedMatchDto[];
   import_complete: boolean;
 }
-export interface DeleteResourceResponseDto { deleted: true; hidden: true; resource_id: number }
+export interface DeleteResourceResponseDto { deleted: true; resource_id: number }
 export interface FavoriteResponseDto { is_favorite: boolean }
 export type UnfavoriteResponseDto = { is_favorite: false };
 

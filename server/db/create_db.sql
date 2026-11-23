@@ -9,7 +9,9 @@ CREATE TABLE `kliros_manager`.`user` (
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 INSERT INTO `kliros_manager`.`user` (`Name`, `Email`, `UserType`) VALUES
-	('Local Owner', 'local@kliros.invalid', 'admin');
+	('Local Admin', 'admin@kliros.invalid', 'admin'),
+	('Local Moderator', 'mod@kliros.invalid', 'moderator'),
+	('Local User', 'user@kliros.invalid', 'regular');
 
 CREATE TABLE `kliros_manager`.`federated_credential` (
     `RowID` int NOT NULL AUTO_INCREMENT,
@@ -28,16 +30,19 @@ CREATE TABLE `kliros_manager`.`resource` (
 	`MetaData` json, 
 	`GroupID` int DEFAULT NULL, 
 	`Source` varchar(255) DEFAULT NULL, 
-	`UserID` int NOT NULL, 
+	`UserID` int NOT NULL COMMENT 'Uploader of the resource',
 	`Reviewed` boolean DEFAULT false, 
-	`Public` boolean DEFAULT false, 
+	`ReviewerId` int DEFAULT NULL COMMENT 'User who reviewed the resource',
+	`ReviewedAt` datetime DEFAULT NULL,
+	`Public` boolean DEFAULT false COMMENT 'Whether this resource is visible to everyone (Public) or only moderators (Private)',
 	`VisualHash` varchar(255), 
 	`FileHash` varchar(64),
-	`Hidden` boolean DEFAULT false,
+	`Deleted` boolean DEFAULT false COMMENT 'Whether this resource has been soft-deleted',
 	`DownloadCount` int DEFAULT 0, 
 	PRIMARY KEY (`id`),
 	KEY `UserID` (`UserID`),
 	CONSTRAINT `resource_ibfk_1` FOREIGN KEY (`UserID`) REFERENCES `user` (`UserID`),
+	CONSTRAINT `resource_ibfk_3` FOREIGN KEY (`ReviewerId`) REFERENCES `user` (`UserID`),
 	CONSTRAINT `resource_ibfk_2` FOREIGN KEY (`GroupID`) REFERENCES `resource` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -55,10 +60,10 @@ CREATE TABLE `kliros_manager`.`metadata` (
 	`id` int NOT NULL AUTO_INCREMENT, 
 	`Name` varchar(255) NOT NULL, 
 	`Type` varchar(255) NOT NULL,
-	`Options` json DEFAULT NULL,
-	`Core` boolean DEFAULT false,
-	`Extracted` boolean DEFAULT false,
-	`Searchable` boolean DEFAULT false,
+	`Options` json DEFAULT NULL COMMENT 'Fixed selectable options for this metadata field',
+	`Core` boolean DEFAULT false COMMENT 'Whether this is always visible, others are considered Additional Fields',
+	`Extracted` boolean DEFAULT false COMMENT 'Whether the system attempts to extract this field from the resource',
+	`Searchable` boolean DEFAULT false COMMENT 'Whether this metadata field is included in searches including the filters on the search page',
 	PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -85,7 +90,8 @@ CREATE TABLE `kliros_manager`.`collection` (
 	`id` int NOT NULL AUTO_INCREMENT, 
 	`Name` varchar(255) NOT NULL, 
 	`Public` boolean DEFAULT false, 
-	`UserId` int DEFAULT NULL,
+	`UserId` int DEFAULT NULL COMMENT 'Owner/creator of this collection',
+	`CreationDate` datetime DEFAULT CURRENT_TIMESTAMP COMMENT 'Date and time this collection was created',
 	PRIMARY KEY (`id`),
 	KEY `UserID` (`UserId`),
 	CONSTRAINT `collection_ibfk_1` FOREIGN KEY (`UserId`) REFERENCES `user` (`UserID`)

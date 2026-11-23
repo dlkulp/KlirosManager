@@ -540,7 +540,10 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     def delete_library_resource(resource_id: int):
         if not is_logged_in():
             abort(401)
-        resource = data_manager.delete_resource(resource_id)
+        try:
+            resource = data_manager.delete_resource(resource_id, session["user_id"])
+        except PermissionError:
+            abort(403)
         if resource is None:
             abort(404)
         return redirect(url_for("home"), code=303)
@@ -549,10 +552,13 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     def api_delete_library_resource(resource_id: int):
         if not is_logged_in():
             return jsonify({"error": "Log in to delete this work."}), 401
-        resource = data_manager.delete_resource(resource_id)
+        try:
+            resource = data_manager.delete_resource(resource_id, session["user_id"])
+        except PermissionError:
+            return jsonify({"error": "You may only delete resources you uploaded."}), 403
         if resource is None:
             return jsonify({"error": "Work not found."}), 404
-        return jsonify({"deleted": True, "hidden": True, "resource_id": resource_id})
+        return jsonify({"deleted": True, "resource_id": resource_id})
 
     @app.post("/api/library/import/check")
     @app.post("/library/import/check")

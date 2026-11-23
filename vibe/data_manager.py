@@ -40,10 +40,12 @@ TABLE_COLUMNS: dict[str, list[dict[str, Any]]] = {
         {"name": "Source", "type": "varchar(255)", "nullable": True, "default": None},
         {"name": "UserID", "type": "int", "nullable": False, "references": ["user", "UserID"]},
         {"name": "Reviewed", "type": "boolean", "nullable": True, "default": False},
+        {"name": "ReviewerId", "type": "int", "nullable": True, "default": None, "references": ["user", "UserID"]},
+        {"name": "ReviewedAt", "type": "datetime", "nullable": True, "default": None},
         {"name": "Public", "type": "boolean", "nullable": True, "default": False},
         {"name": "VisualHash", "type": "varchar(255)", "nullable": True, "default": None},
         {"name": "FileHash", "type": "varchar(64)", "nullable": True, "default": None},
-        {"name": "Hidden", "type": "boolean", "nullable": True, "default": False},
+        {"name": "Deleted", "type": "boolean", "nullable": True, "default": False},
         {"name": "DownloadCount", "type": "int", "nullable": True, "default": 0},
     ],
     "metadata": [
@@ -60,6 +62,7 @@ TABLE_COLUMNS: dict[str, list[dict[str, Any]]] = {
         {"name": "Name", "type": "varchar(255)", "nullable": False},
         {"name": "Public", "type": "boolean", "nullable": True, "default": False},
         {"name": "UserId", "type": "int", "nullable": True, "default": None, "references": ["user", "UserID"]},
+        {"name": "CreationDate", "type": "datetime", "nullable": True, "default": "CURRENT_TIMESTAMP"},
     ],
     "collection_member": [
         {"name": "id", "type": "int", "nullable": False, "primary_key": True},
@@ -119,19 +122,36 @@ class DataManager:
             for name, columns in TABLE_COLUMNS.items()
         }
         database = {
-            "schema_version": 8,
+            "schema_version": 9,
             "tables": tables,
             "next_ids": {name: 1 for name in TABLE_COLUMNS},
         }
+        joined_at = datetime.now().replace(microsecond=0).isoformat(sep=" ")
         owner = {
             "UserID": 1,
-            "Name": "Local Owner",
-            "Email": "local@kliros.invalid",
-            "JoinedAt": datetime.now().replace(microsecond=0).isoformat(sep=" "),
+            "Name": "Local Admin",
+            "Email": "admin@kliros.invalid",
+            "JoinedAt": joined_at,
             "UserType": "admin",
         }
-        database["tables"]["user"]["rows"].append(owner)
-        database["next_ids"]["user"] = 2
+        database["tables"]["user"]["rows"].extend([
+            owner,
+            {
+                "UserID": 2,
+                "Name": "Local Moderator",
+                "Email": "mod@kliros.invalid",
+                "JoinedAt": joined_at,
+                "UserType": "moderator",
+            },
+            {
+                "UserID": 3,
+                "Name": "Local User",
+                "Email": "user@kliros.invalid",
+                "JoinedAt": joined_at,
+                "UserType": "regular",
+            },
+        ])
+        database["next_ids"]["user"] = 4
         for row_id, metadata in enumerate(METADATA_SEED, start=1):
             database["tables"]["metadata"]["rows"].append({"id": row_id, **copy.deepcopy(metadata)})
         database["next_ids"]["metadata"] = len(METADATA_SEED) + 1
@@ -196,6 +216,39 @@ class DataManager:
                 user_table["columns"] = copy.deepcopy(TABLE_COLUMNS["user"])
                 database["schema_version"] = 8
                 self._write(database)
+        if database.get("schema_version") == 8:
+            resource_table = database["tables"].get("resource")
+            collection_table = database["tables"].get("collection")
+            legacy_resource_columns = copy.deepcopy([
+                column for column in TABLE_COLUMNS["resource"]
+                if column["name"] not in {"ReviewerId", "ReviewedAt"}
+            ])
+            for column in legacy_resource_columns:
+                if column["name"] == "Deleted":
+                    column["name"] = "Hidden"
+            legacy_collection_columns = copy.deepcopy([
+                column for column in TABLE_COLUMNS["collection"]
+                if column["name"] != "CreationDate"
+            ])
+            if (
+                isinstance(resource_table, dict)
+                and resource_table.get("columns") == legacy_resource_columns
+                and isinstance(resource_table.get("rows"), list)
+                and isinstance(collection_table, dict)
+                and collection_table.get("columns") == legacy_collection_columns
+                and isinstance(collection_table.get("rows"), list)
+            ):
+                migrated_at = datetime.now().replace(microsecond=0).isoformat(sep=" ")
+                for resource in resource_table["rows"]:
+                    resource["ReviewerId"] = None
+                    resource["ReviewedAt"] = None
+                    resource["Deleted"] = bool(resource.pop("Hidden", False))
+                resource_table["columns"] = copy.deepcopy(TABLE_COLUMNS["resource"])
+                for collection in collection_table["rows"]:
+                    collection["CreationDate"] = migrated_at
+                collection_table["columns"] = copy.deepcopy(TABLE_COLUMNS["collection"])
+                database["schema_version"] = 9
+                self._write(database)
         for name, columns in TABLE_COLUMNS.items():
             table = database["tables"].get(name)
             if not isinstance(table, dict) or not isinstance(table.get("rows"), list):
@@ -237,7 +290,7 @@ class DataManager:
         return self.table(name)["rows"]
 
     def visible_resources(self) -> list[dict[str, Any]]:
-        return [resource for resource in self.rows("resource") if not resource.get("Hidden", False)]
+        return [resource for resource in self.rows("resource") if not resource.get("Deleted", False)]
 
     def metadata_definitions(self) -> list[dict[str, Any]]:
         return self.rows("metadata")
@@ -266,7 +319,7 @@ class DataManager:
         with self._lock:
             database = self._read()
         tables = database["tables"]
-        resources = [row for row in tables["resource"]["rows"] if not row.get("Hidden", False)]
+        resources = [row for row in tables["resource"]["rows"] if not row.get("Deleted", False)]
         facets: dict[str, list[str]] = {}
         for definition in tables["metadata"]["rows"]:
             if definition.get("Searchable") is not True:
@@ -308,7 +361,7 @@ class DataManager:
         page_size = page_size if page_size in self.SEARCH_PAGE_SIZES else 24
         page = max(1, page)
 
-        resources = [row for row in tables["resource"]["rows"] if not row.get("Hidden", False)]
+        resources = [row for row in tables["resource"]["rows"] if not row.get("Deleted", False)]
         favorites_by_resource: dict[int, int] = {}
         for favorite in tables["favorites"]["rows"]:
             resource_id = favorite.get("ResourceID")
@@ -376,7 +429,7 @@ class DataManager:
         with self._lock:
             database = self._read()
             for row in database["tables"]["resource"]["rows"]:
-                if not row.get("Hidden", False) and self.resource_file_hash(row) == normalized_hash:
+                if not row.get("Deleted", False) and self.resource_file_hash(row) == normalized_hash:
                     return copy.deepcopy(row)
         return None
 
@@ -395,17 +448,22 @@ class DataManager:
                     return
             raise ValueError(f"Resource id {resource_id} does not exist.")
 
-    def delete_resource(self, resource_id: int) -> dict[str, Any] | None:
+    def delete_resource(self, resource_id: int, user_id: int) -> dict[str, Any] | None:
         with self._lock:
             database = self._read()
             tables = database["tables"]
             resource = next((
                 row for row in tables["resource"]["rows"]
-                if row["id"] == resource_id and not row.get("Hidden", False)
+                if row["id"] == resource_id and not row.get("Deleted", False)
             ), None)
             if resource is None:
                 return None
-            resource["Hidden"] = True
+            user = next((row for row in tables["user"]["rows"] if row["UserID"] == user_id), None)
+            if user is None:
+                return None
+            if user.get("UserType") not in {"admin", "moderator"} and resource["UserID"] != user_id:
+                raise PermissionError("Users may only delete resources they uploaded.")
+            resource["Deleted"] = True
             self._write(database)
             return copy.deepcopy(resource)
 
@@ -420,9 +478,13 @@ class DataManager:
             if row.get("UserID") not in {user["UserID"] for user in tables["user"]["rows"]}:
                 raise ValueError("Resource UserID must reference an existing user.")
             if row.get("GroupID") is not None and row["GroupID"] not in {
-                item["id"] for item in tables["resource"]["rows"] if not item.get("Hidden", False)
+                item["id"] for item in tables["resource"]["rows"] if not item.get("Deleted", False)
             }:
                 raise ValueError("Resource GroupID must reference an existing resource.")
+            if row.get("ReviewerId") is not None and row["ReviewerId"] not in {
+                user["UserID"] for user in tables["user"]["rows"]
+            }:
+                raise ValueError("Resource ReviewerId must reference an existing user.")
             if row.get("MetaData") is not None and not isinstance(row["MetaData"], dict):
                 raise ValueError("Resource MetaData must be an object or null.")
             unknown_columns = set(values) - {column["name"] for column in TABLE_COLUMNS["resource"]}
@@ -438,7 +500,7 @@ class DataManager:
         with self._lock:
             database = self._read()
             for row in database["tables"]["resource"]["rows"]:
-                if row["id"] == resource_id and not row.get("Hidden", False):
+                if row["id"] == resource_id and not row.get("Deleted", False):
                     row["DownloadCount"] = (row.get("DownloadCount") or 0) + 1
                     self._write(database)
                     return
@@ -513,7 +575,7 @@ class DataManager:
             users = {row["UserID"] for row in database["tables"]["user"]["rows"]}
             resources = {
                 row["id"] for row in database["tables"]["resource"]["rows"]
-                if not row.get("Hidden", False)
+                if not row.get("Deleted", False)
             }
             if user_id not in users or resource_id not in resources:
                 raise ValueError("Favorite must reference an existing user and resource.")
@@ -570,6 +632,7 @@ class DataManager:
                 "Name": normalized_name,
                 "Public": False,
                 "UserId": user_id,
+                "CreationDate": datetime.now().replace(microsecond=0).isoformat(sep=" "),
             }
             database["tables"]["collection"]["rows"].append(collection)
             database["next_ids"]["collection"] += 1
@@ -587,7 +650,7 @@ class DataManager:
                 raise ValueError("Collection does not belong to this user.")
             if resource_id not in {
                 row["id"] for row in database["tables"]["resource"]["rows"]
-                if not row.get("Hidden", False)
+                if not row.get("Deleted", False)
             }:
                 raise ValueError("Resource does not exist.")
             members = database["tables"]["collection_member"]["rows"]

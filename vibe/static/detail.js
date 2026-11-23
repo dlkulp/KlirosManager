@@ -43,6 +43,7 @@ async function loadSession() {
     console.error("Failed to load session:", error);
     session = { logged_in: false };
   }
+  if (detail) renderActions(detail);
 }
 
 async function loadDetail() {
@@ -165,7 +166,11 @@ function renderActions(payload) {
   updateFavoriteButton(payload.is_favorite);
   collectionDialog.dataset.endpoint = `/api/library/${payload.resource.id}/collections`;
   if (session?.logged_in) {
-    deleteForm.hidden = false;
+    const user = session.user;
+    deleteForm.hidden = !user || (
+      !["admin", "moderator"].includes(user.UserType) &&
+      user.UserID !== payload.resource.UserID
+    );
     fillCollections(payload.user_collections || [], payload.resource_collection_ids || []);
   } else {
     document.querySelector("#collection-login-prompt").hidden = false;
@@ -296,7 +301,7 @@ metadataEditForm.addEventListener("submit", async (event) => {
 
 deleteForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!window.confirm("Delete this work and its local files? This cannot be undone.")) return;
+  if (!window.confirm("Remove this work from the library? Its files and saved relationships will remain.")) return;
   const response = await fetch(`/api/library/${detail.resource.id}`, { method: "DELETE" });
   if (response.ok) window.location.assign("/");
 });
