@@ -23,21 +23,16 @@ export function getAttribution(metaData: ResourceDto["MetaData"]) {
  * @returns
  */
 export function isDateInRange(date: Date, range: {start: string | Date, end: string | Date}): boolean {
-  console.log(`Checking if ${dateStripYear(date)}/${date.getFullYear()} is in range ${range.start} - ${range.end}`);
-  if (range.start instanceof Date && range.end instanceof Date) {
-    console.log(1);
-    return date >= range.start && date <= range.end;
-  }
+    if (range.start instanceof Date && range.end instanceof Date)
+        return date >= range.start && date <= range.end;
   else if (
     (typeof range.start === "string" || range.start instanceof String) &&
     (typeof range.end === "string" || range.end instanceof String)) {
-    if (Number(range.start.split("/")[0])>Number(range.end.split("/")[0])) {
-      console.log(2)
+    if (Number(range.start.split("/")[0])>Number(range.end.split("/")[0]))
       // If the start month is greater than the end month, it means the range spans across the year-end.
       // In this case, we need to check if the date is either after the start date or before the end date.
       return date >= new Date(range.start) && date <= new Date(range.end);
-    }
-    else {console.log(3);return date >= new Date(range.start) && date <= new Date(range.end);}
+    else return date >= new Date(range.start) && date <= new Date(range.end);
   }
   throw new Error("Types of range.start and range.end must be either both Date objects or both strings.");
 }
