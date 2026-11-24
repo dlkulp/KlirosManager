@@ -141,10 +141,11 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     def home():
         return send_file(PROJECT_ROOT / "templates" / "index.html", mimetype="text/html")
 
-    @app.get("/api/home")
-    def home_data():
+    @app.get("/api/latest")
+    @app.get("/api/latest/<int:count>")
+    def latest_data(count: int = 3):
         resources = sorted(data_manager.visible_resources(), key=lambda row: row["id"], reverse=True)
-        recent_works = [_resource_view(row, url_for) for row in resources[:3]]
+        recent_works = [_resource_view(row, url_for) for row in resources[:min(count, 10)]]
         return jsonify({"recent_works": recent_works})
 
     @app.get("/import")
@@ -486,16 +487,17 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         # Increment the download count
         data_manager.track_download(resource_id)
         original_name = resource.get("OriginalName") or source_path.name
-        extension = Path(original_name).suffix or source_path.suffix
         title = str(resource.get("DisplayName") or Path(original_name).stem).strip()
-        metadata = resource.get("MetaData") or {}
-        composer = metadata.get("Composer", "") or metadata.get("Arranger", "")
-        if isinstance(composer, dict):
-            composer = composer.get("value", "")
-        composer = str(composer).strip() if composer is not None else ""
+        metadata = _resource_metadata_view(resource)
+
+        extension = Path(original_name).suffix or source_path.suffix
         if extension and title.casefold().endswith(extension.casefold()):
             title = title[:-len(extension)].rstrip()
-        basename = secure_filename(f"{title}-{composer}" if composer else title) or "score"
+
+        # Create the basename from title - metadata.get("Tone") - attribution (only the non-blank parts)
+        attribution = metadata.get("Composer", "") or metadata.get("Arranger", "") or metadata.get("Tradition", "") or "Unknown"
+        parts = [str(part).strip() for part in (title, metadata.get("Tone", ""), attribution) if part and str(part).strip()]
+        basename = secure_filename("-".join(parts)) or "score"
         download_name = f"{basename}{extension}"
         mimetype = mimetypes.guess_type(original_name)[0] or "application/octet-stream"
         return send_file(
@@ -826,7 +828,8 @@ def _resource_view(resource: dict[str, Any], url_builder) -> dict[str, Any]:
         if has_source else None
     )
     return {
-        **resource,
+         # resource minus the metadata property
+        **{key: value for key, value in resource.items() if key != "MetaData"},
         "title": resource.get("DisplayName") or Path(resource.get("OriginalName") or "Untitled").stem,
         "thumbnail_url": thumbnail_url,
         "thumbnail_srcset": thumbnail_srcset,

@@ -31,7 +31,7 @@ const api = new KlirosApi();
 
 onMounted(async () => {
   try {
-    recentWorks.value = (await api.getHome()).recent_works;
+    recentWorks.value = (await api.getLatest()).recent_works;
     if (recentWorks.value.length === 0) {
       emptyMessage.value = "Nothing to see here!";
     }

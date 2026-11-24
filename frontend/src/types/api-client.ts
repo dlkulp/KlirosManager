@@ -1,4 +1,5 @@
 export type MetadataDto = Record<string, string>;
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 export interface UserDto {
   UserID: number;
@@ -19,7 +20,6 @@ export interface ResourceDto {
   id: number;
   DisplayName: string | null;
   OriginalName: string;
-  MetaData: MetadataDto | null;
   GroupID: number | null;
   Source: string | null;
   UserID: number;
@@ -39,7 +39,7 @@ export interface ResourceDto {
   api_url: string;
 }
 
-export interface HomeResponseDto { recent_works: ResourceDto[] }
+export interface LatestResponseDto { recent_works: ResourceDto[] }
 export interface LibraryResponseDto { works: ResourceDto[] }
 
 export type SearchSort = "uploaded" | "popularity" | "name";
@@ -125,7 +125,7 @@ export interface ResourceDetailResponseDto {
 
 export interface UpdateResourceRequestDto {
   DisplayName: string;
-  metadata?: MetadataDto;
+  metadata?: Record<string, JsonValue>;
 }
 export interface RankedMatchDto {
   resource_id: number;
@@ -290,8 +290,9 @@ export class KlirosApi {
   logout(options: ApiRequestOptions = {}): Promise<LogoutResponseDto> {
     return this.json("/api/logout", { method: "POST", ...options });
   }
-  getHome(options: ApiRequestOptions = {}): Promise<HomeResponseDto> {
-    return this.json("/api/home", options);
+  getLatest(count?: number, options: ApiRequestOptions = {}): Promise<LatestResponseDto> {
+    const suffix = count === undefined ? "" : `/${count}`;
+    return this.json(`/api/latest${suffix}`, options);
   }
   getLibrary(options: ApiRequestOptions = {}): Promise<LibraryResponseDto> {
     return this.json("/api/library", options);
@@ -307,6 +308,9 @@ export class KlirosApi {
   }
   getSearchFacets(options: ApiRequestOptions = {}): Promise<SearchFacetsResponseDto> {
     return this.json("/api/search/facets", options);
+  }
+  getSiteMetadata(options: ApiRequestOptions = {}): Promise<SiteMetadataResponseDto> {
+    return this.json("/api/site/metadata", options);
   }
   getProfile(options?: ApiRequestOptions): Promise<ProfileResponseDto>;
   getProfile(userId: number, options?: ApiRequestOptions): Promise<PublicProfileResponseDto | ProfileResponseDto>;

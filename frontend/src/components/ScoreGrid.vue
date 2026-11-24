@@ -17,7 +17,6 @@
             </q-card-section>
             <q-card-section class="title-section column justify-center">
               <div class="text-center">{{ score.title || score.OriginalName || "Untitled" }}</div>
-              <p text-caption class="light">{{ getAttribution(score.MetaData) }}</p>
             </q-card-section>
           </q-card>
         </q-btn>
@@ -27,9 +26,6 @@
 <style lang="scss">
 .title-section {
   padding-top: 0px;
-}
-.title-section p {
-  color: $grey-6
 }
 .title-section div {
   font-size: 1.25rem;
@@ -60,13 +56,4 @@ export interface ScoreGridProps {
 withDefaults(defineProps<ScoreGridProps>(), {
   justify: "start"
 });
-
-function getAttribution(metaData: any) {
-  if (metaData?.Composer?.value)
-    return `By ${metaData.Composer.value}`;
-  else if (metaData?.Arranger?.value)
-    return `Arr. ${metaData.Arranger.value}`;
-  else
-    return "Unknown Composer";
-}
 </script>

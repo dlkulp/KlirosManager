@@ -1,7 +1,7 @@
 const recentWorks = document.querySelector("#recent-works");
 const emptyState = document.querySelector("#home-empty-state");
 
-fetch("/api/home")
+fetch("/api/latest")
   .then((response) => {
     if (!response.ok) throw new Error("Could not load recent works.");
     return response.json();

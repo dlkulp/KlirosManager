@@ -1,15 +1,5 @@
 const accountControls = document.querySelector("#account-controls");
 
-function valuesFromMetadata(value) {
-  if (value === null || value === undefined || value === "") return [];
-  if (Array.isArray(value)) return value.flatMap(valuesFromMetadata);
-  if (typeof value === "object") {
-    if (Object.hasOwn(value, "value")) return valuesFromMetadata(value.value);
-    return Object.values(value).flatMap(valuesFromMetadata);
-  }
-  return [String(value).trim()].filter(Boolean);
-}
-
 function createWorkCard(work, metadataFields = []) {
   const link = document.createElement("a");
   link.className = "search-result-card";
@@ -37,8 +27,8 @@ function createWorkCard(work, metadataFields = []) {
   link.append(title);
   const summary = [];
   for (const fieldName of metadataFields) {
-    const values = valuesFromMetadata((work.MetaData || {})[fieldName]);
-    if (values.length) summary.push(`${fieldName}: ${values.join(", ")}`);
+    const value = work.metadata?.[fieldName]?.trim();
+    if (value) summary.push(`${fieldName}: ${value}`);
     if (summary.length === 2) break;
   }
   if (summary.length) {

@@ -1,6 +1,6 @@
 # Kliros Manager Backend API
 
-Reference for the current Flask PoC in `vibe/app.py`. The dependency-free TypeScript client and request/response DTOs are in [api-client.ts](api-client.ts). Field casing matches the wire format, including `UserID`, collection `UserId`, resource `MetaData`, and update request `metadata`.
+Reference for the current Flask PoC in `vibe/app.py`. The dependency-free TypeScript client and request/response DTOs are in [api-client.ts](api-client.ts). Field casing matches the wire format, including `UserID`, collection `UserId`, and response and update request `metadata`.
 
 ## Transport and Authentication
 
@@ -23,7 +23,7 @@ All successful responses below use HTTP 200. `Auth` means a signed-in cookie ses
 | GET | `/api/session` | No | None | `SessionResponseDto` |
 | POST | `/api/login` | No | None | `LoginResponseDto` |
 | POST | `/api/logout` | No | None | `LogoutResponseDto` |
-| GET | `/api/home` | No | None | `HomeResponseDto` |
+| GET | `/api/latest` or `/api/latest/{count}` | No | Optional non-negative integer count; defaults to 3, capped at 10 | `LatestResponseDto` |
 | GET | `/api/library` | No | None | `LibraryResponseDto` |
 | GET | `/api/search` | No | `SearchRequestDto` as query parameters | `SearchResponseDto` |
 | GET | `/api/search/facets` | No | None | `SearchFacetsResponseDto` |
@@ -55,8 +55,8 @@ Full TypeScript declarations are in [api-client.ts](api-client.ts).
 | --- | --- |
 | `UserDto` | `UserID`, `Name`, `Email`, `JoinedAt` (local date/time string, no timezone), `UserType` (`regular`, `moderator`, `admin`) |
 | `SessionResponseDto` | `{logged_in: true, user: UserDto}` or `{logged_in: false, user: null}` |
-| `ResourceDto` | Visible resource fields `id`, `DisplayName`, `OriginalName`, `MetaData`, `GroupID`, `Source`, `UserID`, `Reviewed`, `ReviewerId`, `ReviewedAt`, `Public`, `Deleted` (false/null), `VisualHash`, `FileHash`; optional `DownloadCount`; derived `title`, `thumbnail_url`, `thumbnail_srcset`, `thumbnail_sizes`, `detail_url`, `api_url` |
-| `HomeResponseDto` | `recent_works: ResourceDto[]`, latest three resource IDs first |
+| `ResourceDto` | Visible resource fields `id`, `DisplayName`, `OriginalName`, `GroupID`, `Source`, `UserID`, `Reviewed`, `ReviewerId`, `ReviewedAt`, `Public`, `Deleted` (false/null), `VisualHash`, `FileHash`; optional `DownloadCount`; derived `title`, `thumbnail_url`, `thumbnail_srcset`, `thumbnail_sizes`, `detail_url`, `api_url`. Raw `MetaData` is omitted |
+| `LatestResponseDto` | `recent_works: ResourceDto[]`, visible resources in descending ID order |
 | `LibraryResponseDto` | `works: ResourceDto[]`, all resources, descending ID |
 | `SearchResponseDto` | `results: SearchResourceDto[]`, `total`, `page`, `page_size`, `page_count` |
 | `SearchResourceDto` | `ResourceDto` plus `metadata: Record<string, string>`, `uploaded_at`, and `popularity` |
@@ -73,7 +73,9 @@ Full TypeScript declarations are in [api-client.ts](api-client.ts).
 | `RankedMatchDto` | `resource_id`, `title`, `original_name`, `composer`, nullable `hamming_distance`, `title_similarity`, `composer_similarity`, numeric `confidence`, `detail_url`, `preview_url` |
 | `BinaryResponseDto` | Client-side envelope: `body: Blob`, `content_type`, `content_disposition`; these are not server JSON fields |
 
-Nullable resource fields follow the local database schema; thumbnail URLs/srcset are null when the source file is absent. `Source` exposes a backend-local path, not a URL clients should fetch. `MetaData` in resource list may contain primitives, arrays, `{value, source, reviewed}` objects, OCR, and hash data. Detail `metadata` and each search result's `metadata` use the same flat string-valued display map, excluding `OCR` and `FileHash`. The display map unwraps `value` wrappers before string conversion, JSON-encodes top-level arrays, converts bare null to an empty string, and stringifies other values. Missing or null `MetaData` produces `{}`; the raw `MetaData` field is unchanged. The detail endpoint's `uploader` excludes `Email`; known uploaders include `UserID`, `Name`, `JoinedAt`, and `UserType`, while unknown uploaders fall back to `{Name: "Unknown user", JoinedAt: ""}`. File type detection (PDF vs image) is determined client-side by checking the file extension.
+Nullable resource fields follow the local database schema; thumbnail URLs/srcset are null when the source file is absent. `Source` exposes a backend-local path, not a URL clients should fetch. Resource views in latest, library, profiles, search, and detail omit the stored `MetaData` field. Latest, library, and profile cards do not include metadata; fetch detail or search when it is needed. Detail's top-level `metadata` and each search result's `metadata` use the same flat string-valued display map, excluding `OCR` and `FileHash`. The display map unwraps `value` wrappers before string conversion, JSON-encodes top-level arrays, converts bare null to an empty string, and stringifies other values. Missing or null stored `MetaData` produces `{}`; the stored data is unchanged. Detail exposes OCR separately in `ocr`. The detail endpoint's `uploader` excludes `Email`; known uploaders include `UserID`, `Name`, `JoinedAt`, and `UserType`, while unknown uploaders fall back to `{Name: "Unknown user", JoinedAt: ""}`. File type detection (PDF vs image) is determined client-side by checking the file extension.
+
+`GET /api/latest` returns up to three works; `/api/latest/{count}` returns up to the requested count, capped at 10. Zero returns an empty list. Negative or non-integer path values return 404. The wrapper exposes `getLatest(count?, options?)`.
 
 ## Search
 
@@ -163,12 +165,12 @@ PATCH `/api/library/{id}` accepts:
 }
 ```
 
-Title is required, trimmed, and limited to 255 characters. `metadata` is optional (default `{}`); keys must be defined metadata fields. Only submitted metadata keys change; empty string/null clears a field. Other values are stored as `{value, source: "user", reviewed: true}`. The backend does not enforce metadata type/option choices. Response: `{status: "updated", resource_id, title, detail_url, matches: RankedMatchDto[], import_complete}`. `import_complete` is true when no ranked matches exist. Match confirmation is currently browser-only; there is no merge/confirmation endpoint.
+Title is required, trimmed, and limited to 255 characters. `metadata` is an optional object (default `{}`); keys must be defined metadata fields. Only submitted metadata keys change; empty string/null clears a field. Other JSON values are stored as `{value, source: "user", reviewed: true}`. The backend does not enforce metadata type/option choices; read values are returned as display strings, not necessarily in their submitted form. Response: `{status: "updated", resource_id, title, detail_url, matches: RankedMatchDto[], import_complete}`. `import_complete` is true when no ranked matches exist. Match confirmation is currently browser-only; there is no merge/confirmation endpoint.
 
 ## Files, Thumbnails, and Soft Deletion
 
 - `/file` returns the original inline with its detected media type (fallback `application/octet-stream`).
-- `/download` returns the original attachment. `Content-Disposition` provides a sanitized title/composer filename (arranger fallback), preserving the original extension. Download counts are not incremented.
+- `/download` returns the original attachment. `Content-Disposition` uses a sanitized filename built from the title, optional Tone, and the first truthy Composer, Arranger, or Tradition (or `Unknown`), preserving the original extension. A download increments the resource's `DownloadCount`.
 - `/thumbnail` and `/thumbnail/{height}` return PNGs at height 300 or 600, with approximate widths 232 or 464. Missing thumbnails may be generated lazily. Unsupported height, missing record/source, or generation failure returns 404.
 - Resource lists, search results/facets, profile uploads/favorites/collection items, duplicate checks, match candidates, detail pages/APIs, and media endpoints omit or return 404 for deleted resources.
 - DELETE resource soft-deletes by setting `Deleted: true` and returns `{deleted: true, resource_id}`. It keeps the row, source and thumbnails, group references, favorites, and collection memberships. Repeating DELETE returns 404. Deleted resources can still be inspected in the local database but are not returned by public resource endpoints.
@@ -208,6 +210,7 @@ import { ApiError, KlirosApi } from "./api-client";
 
 const api = new KlirosApi({ baseUrl: "http://127.0.0.1:5004" });
 await api.login();
+const { metadata_fields } = await api.getSiteMetadata();
 const { facets } = await api.getSearchFacets();
 const page = await api.search({ q: "hymn", filters: { Service: "Vespers" }, page_size: 24 });
 const profile = await api.getProfile();

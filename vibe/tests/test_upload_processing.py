@@ -725,10 +725,83 @@ class UploadRouteTests(unittest.TestCase):
                 self.assertEqual(detail.status_code, 200)
                 self.assertEqual(search.status_code, 200)
                 self.assertEqual(detail.get_json()["metadata"], expected)
+                self.assertNotIn("MetaData", detail.get_json()["resource"])
                 results = search.get_json()["results"]
                 self.assertEqual(len(results), 1)
                 self.assertEqual(results[0]["metadata"], expected)
-                self.assertEqual(results[0]["MetaData"], metadata)
+                self.assertNotIn("MetaData", results[0])
+
+    def test_resource_lists_omit_raw_metadata(self):
+        data_manager = self.app.extensions["data_manager"]
+        resource = data_manager.insert_resource({
+            "OriginalName": "score.pdf",
+            "UserID": 1,
+            "MetaData": {"Composer": {"value": "Composer", "source": "user", "reviewed": True}},
+        })
+        data_manager.toggle_favorite(1, resource["id"])
+        collection = data_manager.create_collection(1, "Saved")
+        data_manager.add_resource_to_collection(1, collection["id"], resource["id"])
+        self.login_demo()
+
+        profile = self.client.get("/api/profile").get_json()
+        lists = [
+            self.client.get("/api/latest").get_json()["recent_works"],
+            self.client.get("/api/library").get_json()["works"],
+            profile["uploads"],
+            profile["favorites"],
+            profile["collections"][0]["items"],
+            self.client.get("/api/profile/1").get_json()["uploads"],
+        ]
+        for works in lists:
+            with self.subTest(works=works):
+                self.assertEqual([work["id"] for work in works], [resource["id"]])
+                self.assertNotIn("MetaData", works[0])
+                self.assertNotIn("metadata", works[0])
+
+    def test_latest_endpoint_defaults_caps_and_excludes_deleted_resources(self):
+        manager = self.app.extensions["data_manager"]
+        self.assertEqual(self.client.get("/api/latest/10").get_json(), {"recent_works": []})
+        resources = [
+            manager.insert_resource({"OriginalName": f"score-{number}.pdf", "UserID": 1})
+            for number in range(12)
+        ]
+        manager.insert_resource({"OriginalName": "deleted.pdf", "UserID": 1, "Deleted": True})
+        expected = [resource["id"] for resource in reversed(resources)]
+        for path, count in (("/api/latest", 3), ("/api/latest/3", 3), ("/api/latest/1", 1), ("/api/latest/0", 0),
+                            ("/api/latest/10", 10), ("/api/latest/20", 10)):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual([row["id"] for row in response.get_json()["recent_works"]], expected[:count])
+        self.assertEqual(self.client.get("/api/latest/-1").status_code, 404)
+        self.assertEqual(self.client.get("/api/latest/not-a-number").status_code, 404)
+        self.assertEqual(self.client.get("/api/home").status_code, 404)
+
+    def test_download_uses_display_metadata_in_filename_and_counts_downloads(self):
+        data_manager = self.app.extensions["data_manager"]
+        source = self.root / "score.pdf"
+        source.write_bytes(self.pdf_bytes())
+        cases = [
+            ({"Tone": "2", "Composer": {"value": "A Composer"}, "Arranger": "A Arranger"}, "Work-2-A_Composer.pdf"),
+            ({"Arranger": "A Arranger", "Tradition": "A Tradition"}, "Work-A_Arranger.pdf"),
+            ({"Tradition": "A Tradition"}, "Work-A_Tradition.pdf"),
+            ({}, "Work-Unknown.pdf"),
+        ]
+        for metadata, filename in cases:
+            with self.subTest(metadata=metadata):
+                resource = data_manager.insert_resource({
+                    "OriginalName": "score.pdf",
+                    "DisplayName": "Work",
+                    "UserID": 1,
+                    "Source": str(source),
+                    "MetaData": metadata,
+                })
+                response = self.client.get(f"/api/library/{resource['id']}/download")
+                self.assertEqual(response.status_code, 200)
+                self.assertIn(f"filename={filename}", response.headers["Content-Disposition"])
+                response.close()
+                detail = self.client.get(f"/api/library/{resource['id']}").get_json()
+                self.assertEqual(detail["resource"]["DownloadCount"], 1)
 
     def test_search_facets_include_only_searchable_visible_values(self):
         data_manager = self.app.extensions["data_manager"]
@@ -782,7 +855,7 @@ class UploadRouteTests(unittest.TestCase):
                 response.close()
 
         self.assertFalse(self.client.get("/api/session").get_json()["logged_in"])
-        self.assertIn("recent_works", self.client.get("/api/home").get_json())
+        self.assertIn("recent_works", self.client.get("/api/latest").get_json())
         self.assertIn("works", self.client.get("/api/library").get_json())
         self.assertIn("results", self.client.get("/api/search").get_json())
         self.assertEqual(self.client.get("/api/profile").status_code, 401)
@@ -836,7 +909,7 @@ class UploadRouteTests(unittest.TestCase):
 
         home = self.client.get("/")
         home_html = home.get_data(as_text=True)
-        recent_works = self.client.get("/api/home").get_json()["recent_works"]
+        recent_works = self.client.get("/api/latest").get_json()["recent_works"]
         self.assertIn('id="recent-works"', home_html)
         self.assertEqual([work["title"] for work in recent_works], ["Work 4", "Work 3", "Work 2"])
         self.assertIn("thumbnail/300 232w", recent_works[0]["thumbnail_srcset"])
@@ -868,7 +941,7 @@ class UploadRouteTests(unittest.TestCase):
         byte_range = self.client.get(f"/library/{resource_id}/file", headers={"Range": "bytes=0-4"})
         self.assertEqual(byte_range.status_code, 206)
         self.assertEqual(byte_range.data, b"%PDF-")
-        self.assertIn("filename=Work_2.pdf", download.headers["Content-Disposition"])
+        self.assertIn("filename=Work_2-Unknown.pdf", download.headers["Content-Disposition"])
         self.assertEqual(download.data, b"%PDF-1.4\nscore")
         self.assertEqual(thumbnail_response.mimetype, "image/png")
         with Image.open(io.BytesIO(thumbnail_response.data)) as thumbnail_image:
@@ -940,7 +1013,7 @@ class UploadRouteTests(unittest.TestCase):
             [hidden["id"], visible["id"]],
         )
 
-        home = self.client.get("/api/home").get_json()["recent_works"]
+        home = self.client.get("/api/latest").get_json()["recent_works"]
         library = self.client.get("/api/library").get_json()["works"]
         search = self.client.get("/api/search", query_string={"q": "Hidden score title"}).get_json()
         self.assertNotIn(hidden["id"], [row["id"] for row in home])

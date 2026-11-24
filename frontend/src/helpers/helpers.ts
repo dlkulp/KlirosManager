@@ -1,4 +1,4 @@
-import { ResourceDto } from "@/types/api-client";
+import { MetadataDto } from "@/types/api-client";
 
 export const colors = {
     red: "#d50000",
@@ -8,7 +8,7 @@ export const colors = {
     gold: "#ffab00"
 };
 
-export function getAttribution(metaData: ResourceDto["MetaData"]) {
+export function getAttribution(metaData: MetadataDto | null) {
   if (metaData?.Composer)
     return `By ${metaData.Composer}`;
   else if (metaData?.Arranger)

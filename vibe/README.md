@@ -57,17 +57,17 @@ Relative paths resolve from this project directory; absolute paths are also acce
 
 ## API
 
-Browser routes `/`, `/library`, `/search`, `/profile`, `/profile/<id>`, `/import`, and `/library/<id>` serve static HTML shells. Page data is provided by JSON APIs: `GET /api/session`, `/api/home`, `/api/library`, `/api/library/<id>`, `/api/profile`, `/api/search` (query, `filters`, `page`, `page_size`, and `sort`), and `/api/search/facets` (metadata filter choices). Authentication is exposed through `POST /api/login` and `/api/logout`.
+Browser routes `/`, `/library`, `/search`, `/profile`, `/profile/<id>`, `/import`, and `/library/<id>` serve static HTML shells. Page data is provided by JSON APIs: `GET /api/session`, `/api/latest` (optionally `/api/latest/<count>`, default 3, capped at 10), `/api/library`, `/api/library/<id>`, `/api/profile`, `/api/search` (query, `filters`, `page`, `page_size`, and `sort`), and `/api/search/facets` (metadata filter choices). Authentication is exposed through `POST /api/login` and `/api/logout`.
 
 Import, metadata updates, favorites, collections, and deletes are API operations. `POST /api/library/import/check` accepts multipart file data and returns the upload, OCR, and metadata-review payload; `PATCH /api/library/<id>` updates metadata and returns possible matches. `POST /api/library/<id>/favorite` and `/collections` manage the signed-in user's data, while `DELETE /api/library/<id>` soft-deletes a work by setting `Deleted`. Deleted works are omitted from lists, search, profile collections, detail pages, and media endpoints; their files and relationships are retained. Admins and moderators can delete any work; regular users can delete only their own uploads. The `/import` shell checks `/api/session` and hides its form for guests; write APIs enforce login. Collection management is owner-scoped regardless of `Public`; public visibility and subscriptions are future work.
 
 Users have a `UserType` of `regular`, `moderator`, or `admin`. New users default to `regular`; the seeded `Local Admin` is `admin`. An admin can switch a non-admin user between regular and moderator with `PATCH /api/admin/users/<id>/type` and a JSON body such as `{"user_type":"moderator"}`. The endpoint cannot grant admin or demote an admin.
 
-`GET /library/<id>/download` lets any visitor download the original document. The attachment name uses the work title, appends the composer when present, and preserves the original extension. Download counts are deferred.
+`GET /library/<id>/download` lets any visitor download the original document. The sanitized attachment name uses the work title, optional tone, and composer, arranger, tradition, or `Unknown`, and preserves the original extension. Each download increments the resource's download count.
 
 Signed-in users can visit `/profile` to see their name, join date, uploads, favorites, and owned collections. `GET /api/profile` includes full score-card data in `uploads`, `favorites`, and each collection's `items`; it returns 401 for guests. Anyone can visit `/profile/<id>` to see another user's name, join date, and uploads; the score detail page links the uploader name there. `GET /api/profile/<id>` is also available to guests, but omits email, favorites, and collections unless the signed-in user owns the requested profile. `DELETE /api/library/<id>/favorite` removes the signed-in user's favorite without toggling it back on when repeated. From the profile users can unfavorite scores, rename or delete a collection, and remove individual items. All score lists share a vanilla JavaScript card renderer in `static/site.js`, with no frontend build step. Collection management follows ownership regardless of the `Public` flag; cross-user collection visibility and subscriptions are future features.
 
-`/search` displays all scores initially, with live text and metadata filters, 24/48/96-item pages, and upload-date, popularity, or name sorting. Text search covers titles and metadata values. Popularity uses favorites until download counts are available.
+`/search` displays all scores initially, with live text and metadata filters, 24/48/96-item pages, and upload-date, popularity, or name sorting. Text search covers titles and metadata values. Popularity uses download counts when present, otherwise favorites.
 
 On detail pages, **Add to Collection** opens a selector where owners can save or remove the work from their collections or create a new collection. **Report to Moderator** currently displays a thank-you only; reasons and details are not sent or stored.
 
@@ -110,6 +110,7 @@ Run the focused tests from this directory:
 
 ```powershell
 python -m unittest discover -s tests -v
+node --test tests\test_ui.cjs
 ```
 
 The upload-route test uses a controlled processing result and does not require Tesseract. It still validates multipart handling, GUID storage, prior-row input, and database persistence.
