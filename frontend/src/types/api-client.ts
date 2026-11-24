@@ -39,8 +39,10 @@ export interface ResourceDto {
   api_url: string;
 }
 
-export interface LatestResponseDto { recent_works: ResourceDto[] }
-export interface LibraryResponseDto { works: ResourceDto[] }
+export interface ResourceWithMetadataDto extends ResourceDto {
+  metadata: MetadataDto;
+}
+export interface LatestResponseDto { recent_works: ResourceWithMetadataDto[] }
 
 export type SearchSort = "uploaded" | "popularity" | "name";
 export type SearchPageSize = 24 | 48 | 96;
@@ -51,8 +53,7 @@ export interface SearchRequestDto {
   page_size?: SearchPageSize;
   sort?: SearchSort;
 }
-export interface SearchResourceDto extends ResourceDto {
-  metadata: MetadataDto;
+export interface SearchResourceDto extends ResourceWithMetadataDto {
   uploaded_at: number;
   popularity: number;
 }
@@ -72,15 +73,15 @@ export interface CollectionDto {
   UserId: number | null;
   CreationDate: string | null;
 }
-export interface ProfileCollectionDto extends CollectionDto { items: ResourceDto[] }
+export interface ProfileCollectionDto extends CollectionDto { items: ResourceWithMetadataDto[] }
 export interface PublicProfileResponseDto {
   user: Omit<UserDto, "Email">;
   initials: string;
-  uploads: ResourceDto[];
+  uploads: ResourceWithMetadataDto[];
 }
 export interface ProfileResponseDto extends PublicProfileResponseDto {
   user: UserDto;
-  favorites: ResourceDto[];
+  favorites: ResourceWithMetadataDto[];
   collections: ProfileCollectionDto[];
 }
 export interface UpdateProfileRequestDto { name: string }
@@ -293,9 +294,6 @@ export class KlirosApi {
   getLatest(count?: number, options: ApiRequestOptions = {}): Promise<LatestResponseDto> {
     const suffix = count === undefined ? "" : `/${count}`;
     return this.json(`/api/latest${suffix}`, options);
-  }
-  getLibrary(options: ApiRequestOptions = {}): Promise<LibraryResponseDto> {
-    return this.json("/api/library", options);
   }
   search(request: SearchRequestDto = {}, options: ApiRequestOptions = {}): Promise<SearchResponseDto> {
     const query = new URLSearchParams();

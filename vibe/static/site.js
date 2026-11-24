@@ -1,6 +1,6 @@
 const accountControls = document.querySelector("#account-controls");
 
-function createWorkCard(work, metadataFields = []) {
+function createWorkCard(work, metadataFields = Object.keys(work.metadata || {})) {
   const link = document.createElement("a");
   link.className = "search-result-card";
   link.href = work.detail_url;

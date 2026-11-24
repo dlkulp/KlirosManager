@@ -4,6 +4,13 @@
       <h4>Library</h4>
       <p v-if="emptyMessage">{{ emptyMessage }}</p>
       <ScoreGrid v-if="allWorks" justify="center" :score-arr="allWorks"></ScoreGrid>
+      <q-pagination
+        v-if="pageCount > 1"
+        v-model="page"
+        :max="pageCount"
+        :max-pages="7"
+        @update:model-value="loadWorks"
+      />
     </div>
   </q-page>
 </template>
@@ -24,7 +31,10 @@ import { ResourceDto, KlirosApi, InferredMetadataValueDto } from "@/types/api-cl
 
 const allWorks = ref<ResourceDto[]>();
 const emptyMessage = ref("");
+const page = ref(1);
+const pageCount = ref(0);
 const api = new KlirosApi();
+let requestSequence = 0;
 
 function getAttribution(metaData: any) {
   if (metaData?.Composer?.value)
@@ -35,14 +45,24 @@ function getAttribution(metaData: any) {
     return "Unknown Composer";
 }
 
-onMounted(async () => {
+async function loadWorks() {
+  const sequence = ++requestSequence;
+  emptyMessage.value = "";
   try {
-    allWorks.value = (await api.getLibrary()).works;
+    const result = await api.search({ page: page.value, page_size: 24 });
+    if (sequence !== requestSequence) return;
+    allWorks.value = result.results;
+    page.value = result.page;
+    pageCount.value = result.page_count;
     if (allWorks.value.length === 0) {
       emptyMessage.value = "Nothing to see here!";
     }
   } catch {
+    if (sequence !== requestSequence) return;
+    allWorks.value = undefined;
     emptyMessage.value = "Library could not be loaded.";
   }
-});
+}
+
+onMounted(loadWorks);
 </script>

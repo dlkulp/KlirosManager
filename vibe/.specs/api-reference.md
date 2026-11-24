@@ -24,7 +24,6 @@ All successful responses below use HTTP 200. `Auth` means a signed-in cookie ses
 | POST | `/api/login` | No | None | `LoginResponseDto` |
 | POST | `/api/logout` | No | None | `LogoutResponseDto` |
 | GET | `/api/latest` or `/api/latest/{count}` | No | Optional non-negative integer count; defaults to 3, capped at 10 | `LatestResponseDto` |
-| GET | `/api/library` | No | None | `LibraryResponseDto` |
 | GET | `/api/search` | No | `SearchRequestDto` as query parameters | `SearchResponseDto` |
 | GET | `/api/search/facets` | No | None | `SearchFacetsResponseDto` |
 | GET | `/api/profile` | Yes | None | `ProfileResponseDto` |
@@ -56,14 +55,14 @@ Full TypeScript declarations are in [api-client.ts](api-client.ts).
 | `UserDto` | `UserID`, `Name`, `Email`, `JoinedAt` (local date/time string, no timezone), `UserType` (`regular`, `moderator`, `admin`) |
 | `SessionResponseDto` | `{logged_in: true, user: UserDto}` or `{logged_in: false, user: null}` |
 | `ResourceDto` | Visible resource fields `id`, `DisplayName`, `OriginalName`, `GroupID`, `Source`, `UserID`, `Reviewed`, `ReviewerId`, `ReviewedAt`, `Public`, `Deleted` (false/null), `VisualHash`, `FileHash`; optional `DownloadCount`; derived `title`, `thumbnail_url`, `thumbnail_srcset`, `thumbnail_sizes`, `detail_url`, `api_url`. Raw `MetaData` is omitted |
-| `LatestResponseDto` | `recent_works: ResourceDto[]`, visible resources in descending ID order |
-| `LibraryResponseDto` | `works: ResourceDto[]`, all resources, descending ID |
+| `ResourceWithMetadataDto` | `ResourceDto` plus `metadata: Record<string, string>` |
+| `LatestResponseDto` | `recent_works: ResourceWithMetadataDto[]`, visible resources in descending ID order |
 | `SearchResponseDto` | `results: SearchResourceDto[]`, `total`, `page`, `page_size`, `page_count` |
-| `SearchResourceDto` | `ResourceDto` plus `metadata: Record<string, string>`, `uploaded_at`, and `popularity` |
+| `SearchResourceDto` | `ResourceWithMetadataDto` plus `uploaded_at` and `popularity` |
 | `SearchFacetsResponseDto` | `facets: Record<string, string[]>`, searchable metadata fields and their choices |
 | `CollectionDto` | `id`, `Name`, `Public`, `UserId`, `CreationDate` |
-| `PublicProfileResponseDto` | `user` with `UserID`, `Name`, `JoinedAt`, `UserType` (no `Email`), `initials`, `uploads`; no `favorites` or `collections` keys |
-| `ProfileResponseDto` | Owner response: public profile fields plus `user.Email`, `favorites`, `collections`; each collection adds `items: ResourceDto[]` |
+| `PublicProfileResponseDto` | `user` with `UserID`, `Name`, `JoinedAt`, `UserType` (no `Email`), `initials`, `uploads: ResourceWithMetadataDto[]`; no `favorites` or `collections` keys |
+| `ProfileResponseDto` | Owner response: public profile fields plus `user.Email`, `favorites: ResourceWithMetadataDto[]`, `collections`; each collection adds `items: ResourceWithMetadataDto[]` |
 | `UpdateProfileResponseDto` | `user: UserDto`, the updated current user |
 | `SiteMetadataResponseDto` | `metadata_fields: MetadataDefinitionDto[]` |
 | `MetadataDefinitionDto` | `id`, `Name`, `Type`, `Options` (string array or null), `Core`, `Extracted`, `Searchable`, optional `Required` |
@@ -73,7 +72,9 @@ Full TypeScript declarations are in [api-client.ts](api-client.ts).
 | `RankedMatchDto` | `resource_id`, `title`, `original_name`, `composer`, nullable `hamming_distance`, `title_similarity`, `composer_similarity`, numeric `confidence`, `detail_url`, `preview_url` |
 | `BinaryResponseDto` | Client-side envelope: `body: Blob`, `content_type`, `content_disposition`; these are not server JSON fields |
 
-Nullable resource fields follow the local database schema; thumbnail URLs/srcset are null when the source file is absent. `Source` exposes a backend-local path, not a URL clients should fetch. Resource views in latest, library, profiles, search, and detail omit the stored `MetaData` field. Latest, library, and profile cards do not include metadata; fetch detail or search when it is needed. Detail's top-level `metadata` and each search result's `metadata` use the same flat string-valued display map, excluding `OCR` and `FileHash`. The display map unwraps `value` wrappers before string conversion, JSON-encodes top-level arrays, converts bare null to an empty string, and stringifies other values. Missing or null stored `MetaData` produces `{}`; the stored data is unchanged. Detail exposes OCR separately in `ocr`. The detail endpoint's `uploader` excludes `Email`; known uploaders include `UserID`, `Name`, `JoinedAt`, and `UserType`, while unknown uploaders fall back to `{Name: "Unknown user", JoinedAt: ""}`. File type detection (PDF vs image) is determined client-side by checking the file extension.
+Nullable resource fields follow the local database schema; thumbnail URLs/srcset are null when the source file is absent. `Source` exposes a backend-local path, not a URL clients should fetch. Resource views in latest, profiles, search, and detail omit the stored `MetaData` field. Latest works, profile uploads/favorites/collection items, search results, and detail's top-level `metadata` use the same flat string-valued display map, excluding `OCR` and `FileHash`. Detail's nested `resource` remains a `ResourceDto`; its metadata is supplied separately. The display map unwraps `value` wrappers before string conversion, JSON-encodes top-level arrays, converts bare null to an empty string, and stringifies other values. Missing or null stored `MetaData` produces `{}`; the stored data is unchanged. Detail exposes OCR separately in `ocr`. The detail endpoint's `uploader` excludes `Email`; known uploaders include `UserID`, `Name`, `JoinedAt`, and `UserType`, while unknown uploaders fall back to `{Name: "Unknown user", JoinedAt: ""}`. File type detection (PDF vs image) is determined client-side by checking the file extension.
+
+`GET /api/library` has been removed and returns 404. Use paginated `GET /api/search` to browse the library; the client exposes `search()` instead of `getLibrary()`. The PoC links library browsing to `/search`; `/library` no longer serves a page.
 
 `GET /api/latest` returns up to three works; `/api/latest/{count}` returns up to the requested count, capped at 10. Zero returns an empty list. Negative or non-integer path values return 404. The wrapper exposes `getLatest(count?, options?)`.
 
@@ -191,7 +192,7 @@ These routes are not used by the typed client:
 
 | Route | Behavior |
 | --- | --- |
-| GET `/`, `/library`, `/search`, `/profile`, `/import` | Static HTML shells |
+| GET `/`, `/search`, `/profile`, `/profile/{id}`, `/import` | Static HTML shells |
 | GET `/library/{id}` | Detail HTML shell for a visible resource; deleted/missing resources return 404 |
 | POST `/login`, `/logout` | Demo session actions followed by 302 redirect |
 | POST `/library/import/check`, PATCH `/library/{id}` | Aliases of the API import/update routes |

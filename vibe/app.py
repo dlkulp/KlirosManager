@@ -145,21 +145,18 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     @app.get("/api/latest/<int:count>")
     def latest_data(count: int = 3):
         resources = sorted(data_manager.visible_resources(), key=lambda row: row["id"], reverse=True)
-        recent_works = [_resource_view(row, url_for) for row in resources[:min(count, 10)]]
+        recent_works = [
+            {
+                **_resource_view(row, url_for),
+                "metadata": _resource_metadata_view(row),
+            }
+            for row in resources[:min(count, 10)]
+        ]
         return jsonify({"recent_works": recent_works})
 
     @app.get("/import")
     def import_score():
         return send_file(PROJECT_ROOT / "templates" / "import.html", mimetype="text/html")
-
-    @app.get("/library")
-    def library():
-        return send_file(PROJECT_ROOT / "templates" / "library.html", mimetype="text/html")
-
-    @app.get("/api/library")
-    def library_data():
-        resources = sorted(data_manager.visible_resources(), key=lambda row: row["id"], reverse=True)
-        return jsonify({"works": [_resource_view(row, url_for) for row in resources]})
 
     @app.get("/search")
     def search():
@@ -233,7 +230,10 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             return jsonify({"error": "User not found."}), 404
         is_owner = logged_in and user_id == session["user_id"]
         resources = {
-            row["id"]: _resource_view(row, url_for)
+            row["id"]: {
+                **_resource_view(row, url_for),
+                "metadata": _resource_metadata_view(row),
+            }
             for row in data_manager.visible_resources()
         }
         uploads = sorted(
@@ -360,7 +360,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
     @app.get("/api/library/<int:resource_id>")
     def library_detail_data(resource_id: int):
-        resource = _get_resource(data_manager, resource_id)
+        resource = _get_resource_row(data_manager, resource_id)
         if resource is None:
             abort(404)
         source_value = resource.get("Source")
@@ -474,7 +474,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     @app.get("/api/library/<int:resource_id>/download")
     @app.get("/library/<int:resource_id>/download")
     def download_library_file(resource_id: int):
-        resource = _get_resource(data_manager, resource_id)
+        resource = _get_resource_row(data_manager, resource_id)
         if resource is None:
             abort(404)
         source_value = resource.get("Source")
@@ -799,6 +799,11 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
 
 def _get_resource(data_manager: DataManager, resource_id: int) -> dict[str, Any] | None:
+    resource = _get_resource_row(data_manager, resource_id)
+    return _resource_view(resource, url_for) if resource is not None else None
+
+
+def _get_resource_row(data_manager: DataManager, resource_id: int) -> dict[str, Any] | None:
     return next((row for row in data_manager.visible_resources() if row["id"] == resource_id), None)
 
 

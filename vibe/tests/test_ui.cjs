@@ -34,7 +34,10 @@ test("home loads recent works from the latest API", async () => {
   const ui = setup(async (url) => {
     calls.push(url);
     return { ok: true, json: async () => ({ recent_works: [
-      { title: "Work", OriginalName: "score.pdf", detail_url: "/library/1" },
+      {
+        title: "Work", OriginalName: "score.pdf", detail_url: "/library/1",
+        metadata: { Composer: "A Composer", Tone: "2" },
+      },
     ] }) };
   });
   ui.load("home.js");
@@ -42,6 +45,10 @@ test("home loads recent works from the latest API", async () => {
   assert.deepEqual(calls, ["/api/latest"]);
   assert.equal(ui.recent.children.length, 1);
   assert.equal(ui.recent.children[0].children[1].textContent, "Work");
+  assert.equal(
+    ui.recent.children[0].children.find((child) => child.className === "search-result-metadata").textContent,
+    "Composer: A Composer · Tone: 2"
+  );
   assert.equal(ui.empty.hidden, true);
 });
 
@@ -53,4 +60,23 @@ test("search cards display the formatted metadata map", () => {
   }, ["Service", "Language", "Composer"])`, ui.context);
   const summary = card.children.find((child) => child.className === "search-result-metadata");
   assert.equal(summary.textContent, "Service: Vespers · Language: English");
+});
+
+test("profile cards use metadata by default, skip blanks, and limit the summary", () => {
+  const ui = setup();
+  const card = vm.runInContext(`createWorkCard({
+    title: "Work", OriginalName: "score.pdf", detail_url: "/library/1",
+    metadata: { Composer: " ", Tone: "", Service: "Vespers", Language: "English", Tradition: "Chant" }
+  })`, ui.context);
+  const summary = card.children.find((child) => child.className === "search-result-metadata");
+  assert.equal(summary.textContent, "Service: Vespers · Language: English");
+});
+
+test("cards with absent or empty metadata omit the summary", () => {
+  const ui = setup();
+  for (const metadata of [undefined, {}]) {
+    ui.context.work = { title: "Work", detail_url: "/library/1", metadata };
+    const card = vm.runInContext("createWorkCard(work)", ui.context);
+    assert.equal(card.children.some((child) => child.className === "search-result-metadata"), false);
+  }
 });

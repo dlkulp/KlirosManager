@@ -725,13 +725,17 @@ class UploadRouteTests(unittest.TestCase):
                 self.assertEqual(detail.status_code, 200)
                 self.assertEqual(search.status_code, 200)
                 self.assertEqual(detail.get_json()["metadata"], expected)
+                self.assertEqual(detail.get_json()["ocr"], (metadata or {}).get("OCR", {}))
                 self.assertNotIn("MetaData", detail.get_json()["resource"])
+                latest = self.client.get("/api/latest/1").get_json()["recent_works"][0]
+                self.assertEqual(latest["metadata"], expected)
+                self.assertNotIn("MetaData", latest)
                 results = search.get_json()["results"]
                 self.assertEqual(len(results), 1)
                 self.assertEqual(results[0]["metadata"], expected)
                 self.assertNotIn("MetaData", results[0])
 
-    def test_resource_lists_omit_raw_metadata(self):
+    def test_resource_lists_include_display_metadata_and_omit_raw_metadata(self):
         data_manager = self.app.extensions["data_manager"]
         resource = data_manager.insert_resource({
             "OriginalName": "score.pdf",
@@ -746,7 +750,6 @@ class UploadRouteTests(unittest.TestCase):
         profile = self.client.get("/api/profile").get_json()
         lists = [
             self.client.get("/api/latest").get_json()["recent_works"],
-            self.client.get("/api/library").get_json()["works"],
             profile["uploads"],
             profile["favorites"],
             profile["collections"][0]["items"],
@@ -756,7 +759,12 @@ class UploadRouteTests(unittest.TestCase):
             with self.subTest(works=works):
                 self.assertEqual([work["id"] for work in works], [resource["id"]])
                 self.assertNotIn("MetaData", works[0])
-                self.assertNotIn("metadata", works[0])
+                self.assertEqual(works[0]["metadata"], {"Composer": "Composer"})
+
+        self.client.post("/api/logout")
+        public_uploads = self.client.get("/api/profile/1").get_json()["uploads"]
+        self.assertEqual(public_uploads[0]["metadata"], {"Composer": "Composer"})
+        self.assertNotIn("MetaData", public_uploads[0])
 
     def test_latest_endpoint_defaults_caps_and_excludes_deleted_resources(self):
         manager = self.app.extensions["data_manager"]
@@ -844,7 +852,7 @@ class UploadRouteTests(unittest.TestCase):
         self.assertEqual(facets["Liturgical Date"], [])
 
     def test_page_routes_are_static_and_data_is_available_from_json_apis(self):
-        for path in ("/", "/library", "/search", "/profile", "/profile/1", "/import"):
+        for path in ("/", "/search", "/profile", "/profile/1", "/import"):
             with self.subTest(path=path):
                 response = self.client.get(path)
                 page = response.get_data(as_text=True)
@@ -852,11 +860,13 @@ class UploadRouteTests(unittest.TestCase):
                 self.assertEqual(response.mimetype, "text/html")
                 self.assertNotIn("{{", page)
                 self.assertNotIn("{%", page)
+                self.assertNotIn('href="/library"', page)
                 response.close()
 
+        self.assertEqual(self.client.get("/library").status_code, 404)
+        self.assertEqual(self.client.get("/api/library").status_code, 404)
         self.assertFalse(self.client.get("/api/session").get_json()["logged_in"])
         self.assertIn("recent_works", self.client.get("/api/latest").get_json())
-        self.assertIn("works", self.client.get("/api/library").get_json())
         self.assertIn("results", self.client.get("/api/search").get_json())
         self.assertEqual(self.client.get("/api/profile").status_code, 401)
         self.assertEqual(self.client.get("/api/library/987").status_code, 404)
@@ -914,13 +924,13 @@ class UploadRouteTests(unittest.TestCase):
         self.assertEqual([work["title"] for work in recent_works], ["Work 4", "Work 3", "Work 2"])
         self.assertIn("thumbnail/300 232w", recent_works[0]["thumbnail_srcset"])
         self.assertIn("thumbnail/600 464w", recent_works[0]["thumbnail_srcset"])
-        self.assertIn('href="/library"', home_html)
+        self.assertIn('href="/search"', home_html)
         self.assertEqual(self.client.get("/library/987").status_code, 404)
 
-        library = self.client.get("/library")
+        library = self.client.get("/search")
         library_html = library.get_data(as_text=True)
-        library_works = self.client.get("/api/library").get_json()["works"]
-        self.assertIn('id="library-grid"', library_html)
+        library_works = self.client.get("/api/search").get_json()["results"]
+        self.assertIn('id="search-results"', library_html)
         self.assertEqual(len(library_works), 4)
 
         resource_id = resources[1]["id"]
@@ -1014,7 +1024,7 @@ class UploadRouteTests(unittest.TestCase):
         )
 
         home = self.client.get("/api/latest").get_json()["recent_works"]
-        library = self.client.get("/api/library").get_json()["works"]
+        library = self.client.get("/api/search").get_json()["results"]
         search = self.client.get("/api/search", query_string={"q": "Hidden score title"}).get_json()
         self.assertNotIn(hidden["id"], [row["id"] for row in home])
         self.assertEqual([row["id"] for row in library], [visible["id"]])
