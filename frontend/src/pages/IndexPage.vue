@@ -1,6 +1,6 @@
 <template>
   <q-page>
-    <header class="flex justify-center items-center column">
+    <header class="flex justify-center items-center column q-mb-sm">
       <h1>Recent Additions</h1>
       <q-btn flat to="/library">Browse full library →</q-btn>
     </header>
@@ -22,10 +22,9 @@ import ScoreGrid, {
   type ScoreGridProps
 } from "@/components/ScoreGrid.vue";
 import { onMounted, ref } from "vue";
-import { ResourceDto, KlirosApi } from "@/types/api-client";
-import { getAttribution } from "@/helpers/helpers";
+import { ResourceWithMetadataDto, KlirosApi } from "@/types/api-client";
 
-const recentWorks = ref<ResourceDto[]>();
+const recentWorks = ref<ResourceWithMetadataDto[]>();
 const emptyMessage = ref("");
 const api = new KlirosApi();
 

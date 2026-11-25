@@ -26,7 +26,8 @@ export default defineConfig((/* ctx */) => {
       // 'line-awesome',
 
       "roboto-font", // optional, you are not bound to it
-      "material-icons" // optional, you are not bound to it
+      "material-icons", // optional, you are not bound to it
+      "material-icons-outlined"
     ],
 
     // https://v2.quasar.dev/quasar-cli-vite/quasar-config-file#build
@@ -94,7 +95,7 @@ export default defineConfig((/* ctx */) => {
       // directives: [],
 
       // Quasar plugins
-      plugins: []
+      plugins: ["Notify"]
     },
 
     // animations: 'all', // --- includes all animations

@@ -67,11 +67,16 @@ const favoriteCount = computed(() => {
   return profile && "favorites" in profile ? profile.favorites.length : undefined;
 });
 
-
-
 onMounted(async() => {
   if (store.user) {
-    user.value = store.user;
+    try {
+      // This refreshes the info to make sure we have any updates (favorites, collections, etc.)
+      store.user = await api.getProfile();
+      user.value = store.user;
+    }
+    catch(error) {
+      console.log(error);
+    }
   }
   else
     try {

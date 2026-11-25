@@ -1,7 +1,7 @@
 import { MetadataDto } from "@/types/api-client";
 
 export const colors = {
-    red: "#d50000",
+    red: "#980000",
     blue: "#304ffe",
     purple: "#aa00ff",
     green: "#00c858",

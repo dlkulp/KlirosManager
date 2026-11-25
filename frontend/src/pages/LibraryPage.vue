@@ -26,24 +26,14 @@ import ScoreGrid, {
   type ScoreGridProps
 } from "@/components/ScoreGrid.vue";
 import { onMounted, ref } from "vue";
-import { ResourceDto, KlirosApi, InferredMetadataValueDto } from "@/types/api-client";
-//import { getAttribution } from "@/helpers/helpers";
+import { ResourceWithMetadataDto, KlirosApi } from "@/types/api-client";
 
-const allWorks = ref<ResourceDto[]>();
+const allWorks = ref<ResourceWithMetadataDto[]>();
 const emptyMessage = ref("");
 const page = ref(1);
 const pageCount = ref(0);
 const api = new KlirosApi();
 let requestSequence = 0;
-
-function getAttribution(metaData: any) {
-  if (metaData?.Composer?.value)
-    return `By ${metaData.Composer.value}`;
-  else if (metaData?.Arranger?.value)
-    return `Arr. ${metaData.Arranger.value}`;
-  else
-    return "Unknown Composer";
-}
 
 async function loadWorks() {
   const sequence = ++requestSequence;
