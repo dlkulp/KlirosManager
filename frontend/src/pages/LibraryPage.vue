@@ -26,7 +26,7 @@ import ScoreGrid, {
   type ScoreGridProps
 } from "@/components/ScoreGrid.vue";
 import { onMounted, ref } from "vue";
-import { ResourceDto, KlirosApi, InferredMetadataValueDto } from "@/types/api-client";
+import { ResourceDto, KlirosApi } from "@/types/api-client";
 //import { getAttribution } from "@/helpers/helpers";
 
 const allWorks = ref<ResourceDto[]>();

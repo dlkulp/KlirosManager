@@ -581,7 +581,8 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         uploaded_file.stream.seek(0)
         file_hash = hashlib.sha256(file_bytes).hexdigest()
 
-        storage_folder = settings.storage_path()
+        # Ensures the uploads folder exists before duplicate checks.
+        settings.storage_path()
         visible_resources = data_manager.visible_resources()
         for resource_row in visible_resources:
             if data_manager.resource_file_hash(resource_row):
@@ -737,7 +738,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             "ocr": result.get("ocr", {"status": "unavailable", "text": "", "message": "OCR was not run."}),
             "visual_hash": created_resource["VisualHash"],
             "matches": result.get("matches", []),
-            "inferred_metadata": inferred_metadata,
+            "inferred_metadata": _resource_metadata_view(created_resource),
             "debug": {
                 "file_hash": file_hash,
                 "visual_hash": result.get("visual_hash"),
