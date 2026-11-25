@@ -181,11 +181,6 @@ export interface ImportMatchDto {
   visual_hash: string;
   hamming_distance: number;
 }
-export interface InferredMetadataValueDto {
-  value: string;
-  source: "ocr";
-  reviewed: false;
-}
 export interface ImportCreatedResponseDto {
   status: "created";
   upload: {
@@ -202,7 +197,7 @@ export interface ImportCreatedResponseDto {
   ocr: OcrDto;
   visual_hash: string | null;
   matches: ImportMatchDto[];
-  inferred_metadata: Record<string, InferredMetadataValueDto>;
+  inferred_metadata: MetadataDto;
   debug: ImportDebugDto;
   errors: string[];
 }

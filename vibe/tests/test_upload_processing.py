@@ -176,6 +176,7 @@ class UploadRouteTests(unittest.TestCase):
         self.assertEqual(rows[0]["UserID"], 1)
         self.assertEqual(rows[0]["FileHash"], hashlib.sha256(self.pdf_bytes()).hexdigest())
         self.assertFalse(rows[0]["MetaData"]["Tone Set"]["reviewed"])
+        self.assertEqual(payload["inferred_metadata"], {"Tone Set": "Byzantine"})
         self.assertEqual(payload["debug"]["ocr_text"], "Byzantine Tone 4")
         self.assertEqual(payload["debug"]["file_hash"], rows[0]["FileHash"])
 

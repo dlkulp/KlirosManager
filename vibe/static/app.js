@@ -81,7 +81,7 @@ function renderResult(payload) {
   const metadata = payload.inferred_metadata || {};
   const entries = Object.entries(metadata);
   if (!entries.length) addDefinition(metadataList, "Suggestions", "No metadata identified");
-  for (const [name, detail] of entries) addDefinition(metadataList, name, detail?.value ?? "");
+  for (const [name, value] of entries) addDefinition(metadataList, name, value ?? "");
 
   const processingErrors = document.querySelector("#processing-errors");
   processingErrors.replaceChildren();

@@ -150,12 +150,12 @@ Send multipart field `file` with its original filename. Extensions: `.pdf`, `.pn
 
 | Status | HTTP | Response |
 | --- | --- | --- |
-| `created` | 200 | `ImportCreatedResponseDto`: `upload`, `ocr`, nullable `visual_hash`, initial `matches`, `inferred_metadata`, `debug`, `errors` |
+| `created` | 200 | `ImportCreatedResponseDto`: `upload`, `ocr`, nullable `visual_hash`, initial `matches`, `inferred_metadata: Record<string, string>`, `debug`, `errors` |
 | `duplicate` | 200 | `ImportDuplicateResponseDto`: `match_type` (`sha256` exact file or `phash` identical first-page perceptual hash), `duplicate`, `debug`; no new copy stored |
 | `rejected` | 422 | `ImportRejectedResponseDto`: `reason: "not_sheet_music"`, `error`, `debug`, `reference_check` (distance, reference image, threshold); no new resource stored |
 | `error` | 400/401/413/415/500/503 | `{status: "error", error: string}`; thrown as `ApiError` by the client |
 
-`upload` contains `resource_id`, `stored_name`, `original_name`, `title`, `source`, thumbnail URLs/srcset, and `detail_url`. `debug` contains `file_hash`, nullable `visual_hash`, and `ocr_text`. Initial import matches have only `resource_id`, `original_name`, `visual_hash`, and `hamming_distance`; they are **not** `RankedMatchDto` and do not contain preview/detail URLs. Inferred metadata values have `value: string`, `source: "ocr"`, and `reviewed: false`. A created response may contain non-fatal OCR/thumbnail errors; do not treat `errors.length > 0` as a failed import.
+`upload` contains `resource_id`, `stored_name`, `original_name`, `title`, `source`, thumbnail URLs/srcset, and `detail_url`. `debug` contains `file_hash`, nullable `visual_hash`, and `ocr_text`. Initial import matches have only `resource_id`, `original_name`, `visual_hash`, and `hamming_distance`; they are **not** `RankedMatchDto` and do not contain preview/detail URLs. `inferred_metadata` uses the same display-string format as `metadata` elsewhere (`MetadataDto`): it is the stored resource's metadata after import, with `OCR` and `FileHash` omitted. The stored values are still marked `source: "ocr"` and `reviewed: false` internally, but those flags are not returned. A created response may contain non-fatal OCR/thumbnail errors; do not treat `errors.length > 0` as a failed import.
 
 PATCH `/api/library/{id}` accepts:
 

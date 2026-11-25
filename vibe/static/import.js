@@ -148,7 +148,7 @@ function showReview(payload) {
   const inferred = payload.inferred_metadata || {};
   const fields = metadataDefinitions.map((definition) => ({
     ...definition,
-    value: inferred[definition.Name]?.value ?? definition.value ?? "",
+    value: inferred[definition.Name] ?? definition.value ?? "",
   }));
   const primary = [];
   const additional = [];
