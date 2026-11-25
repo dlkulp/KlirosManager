@@ -17,7 +17,7 @@
         </q-card-section>
         <q-card-section class="title-section column justify-center">
           <div class="text-center">{{ score.title || score.OriginalName || "Untitled" }}</div>
-          <p text-caption class="light">{{ getAttribution(score.metadata) }}</p>
+          <p text-caption class="light text-weight-thin">{{ getAttribution(score.metadata) }}</p>
         </q-card-section>
       </q-card>
     </q-btn>
@@ -29,10 +29,10 @@
   padding-top: 0px;
 }
 .title-section div {
-  font-size: 1.25rem;
+  font-size: 1.15rem;
   font-weight: bold;
   width: 207px;
-  height: 1em;
+  height: 1.25em;
   margin: auto;
   overflow: hidden;
   white-space: nowrap;

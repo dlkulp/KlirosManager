@@ -74,7 +74,7 @@
             <div class="">
               <template v-if="owner">
                 <q-btn icon="edit" color="info" class="text-body2 q-ma-xs">&nbsp;Edit</q-btn>
-                <q-btn icon="delete" color="negative" class="text-body2 q-ma-xs" @click="deleteRec()">&nbsp;Delete</q-btn>
+                <q-btn icon="delete" color="negative" class="text-body2 q-ma-xs" @click="promptDelete()">&nbsp;Delete</q-btn>
               </template>
               <q-btn icon="flag" color="warning" class="text-body2 q-ma-xs">&nbsp;Report</q-btn>
             </div>
@@ -98,19 +98,29 @@ import { store } from "@/helpers/store";
 import { PdfViewer } from "vue-pdfz";
 import "vue-pdfz/style.css";
 import { useRouter } from "vue-router";
+import { useQuasar } from "quasar";
 
 const { scoreId } = defineProps<{
   scoreId: string;
 }>();
-
+const $q = useQuasar();
 const starred = ref<boolean>(false);
 const router = useRouter();
+
+async function promptDelete() {
+  $q.dialog({
+    title: "Confirm delete?",
+    message: "Are you sure you want to remove this score from the library? Files and saved relationships will remain.",
+    cancel: true,
+    persistent: true
+  }).onOk(deleteRec);
+}
 
 async function deleteRec() {
   if (detail.value) {
     let resp = await api.deleteResource(detail.value.resource.id);
     if (resp.deleted)
-      await router.push("/library");
+      await router.replace("/library");
   }
 }
 
