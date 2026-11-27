@@ -584,17 +584,6 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         # Ensures the uploads folder exists before duplicate checks.
         settings.storage_path()
         visible_resources = data_manager.visible_resources()
-        for resource_row in visible_resources:
-            if data_manager.resource_file_hash(resource_row):
-                continue
-            source_path = resource_row.get("Source")
-            if not source_path or not Path(source_path).is_file():
-                continue
-            try:
-                legacy_hash = UploadService.calculate_file_hash(source_path)
-                data_manager.update_resource_file_hash(resource_row["id"], legacy_hash)
-            except OSError:
-                continue
 
         duplicate = data_manager.find_resource_by_file_hash(file_hash)
         if duplicate:
@@ -722,23 +711,10 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         response = {
             "status": "created",
             "upload": {
-                "resource_id": created_resource["id"],
-                "stored_name": saved_upload["stored_name"],
-                "original_name": saved_upload["original_name"],
-                "title": created_resource["DisplayName"],
-                "source": created_resource["Source"],
-                "thumbnail_url": url_for("library_thumbnail", resource_id=created_resource["id"]),
-                "thumbnail_600_url": url_for("library_thumbnail_size", resource_id=created_resource["id"], height=600),
-                "thumbnail_srcset": (
-                    f"{url_for('library_thumbnail_size', resource_id=created_resource['id'], height=300)} 232w, "
-                    f"{url_for('library_thumbnail_size', resource_id=created_resource['id'], height=600)} 464w"
-                ),
-                "detail_url": url_for("library_detail", resource_id=created_resource["id"]),
+                **_resource_view(created_resource, url_for),
+                "metadata": _resource_metadata_view(created_resource),
             },
-            "ocr": result.get("ocr", {"status": "unavailable", "text": "", "message": "OCR was not run."}),
-            "visual_hash": created_resource["VisualHash"],
             "matches": result.get("matches", []),
-            "inferred_metadata": _resource_metadata_view(created_resource),
             "debug": {
                 "file_hash": file_hash,
                 "visual_hash": result.get("visual_hash"),

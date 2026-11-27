@@ -129,23 +129,23 @@ function showDuplicate(payload) {
 }
 
 function showReview(payload) {
-  resourceId = payload.upload.resource_id;
+  resourceId = payload.upload.id;
   detailUrl = payload.upload.detail_url;
   document.querySelector("#wizard-step-1").classList.add("step-complete");
   document.querySelector("#wizard-step-1").removeAttribute("aria-current");
   document.querySelector("#wizard-step-2").setAttribute("aria-current", "step");
   uploadStep.hidden = true;
   reviewStep.hidden = false;
-  document.querySelector("#review-original-name").textContent = payload.upload.original_name;
+  document.querySelector("#review-original-name").textContent = payload.upload.OriginalName;
   document.querySelector("#work-title").value = payload.upload.title || "";
-  document.querySelector("#recognized-text").textContent = payload.ocr?.text || "No OCR text was recognized.";
+  document.querySelector("#recognized-text").textContent = payload.debug.ocr_text || "No OCR text was recognized.";
   const thumbnail = document.querySelector("#review-thumbnail");
   if (payload.upload.thumbnail_url) {
-    thumbnail.src = payload.upload.thumbnail_600_url || payload.upload.thumbnail_url;
+    thumbnail.src = `${payload.upload.thumbnail_url}/600`;
     thumbnail.hidden = false;
   }
 
-  const inferred = payload.inferred_metadata || {};
+  const inferred = payload.upload.metadata;
   const fields = metadataDefinitions.map((definition) => ({
     ...definition,
     value: inferred[definition.Name] ?? definition.value ?? "",
@@ -180,7 +180,7 @@ function showMatchResults(payload) {
 
   if (!matches.length) {
     heading.textContent = "Import complete";
-    instruction.textContent = "No reasonable matches were found. The work is in your library.";
+    instruction.textContent = "No visual matches were found. New uploads may require moderation to appear publically.";
     return;
   }
 

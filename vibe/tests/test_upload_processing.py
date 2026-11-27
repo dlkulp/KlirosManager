@@ -152,33 +152,42 @@ class UploadRouteTests(unittest.TestCase):
              patch.object(processor, "_perceptual_hash", return_value="aabbccdd"), \
              patch.object(processor, "process_image", return_value=fake_result) as process:
             response = self.client.post(
-                "/library/import/check",
+                "/api/library/import/check",
                 data={"file": (io.BytesIO(self.pdf_bytes()), "my score.pdf")},
                 content_type="multipart/form-data",
             )
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
-        self.assertEqual(payload["upload"]["original_name"], "my score.pdf")
-        self.assertTrue(payload["upload"]["stored_name"].endswith(".pdf"))
-        self.assertNotEqual(payload["upload"]["stored_name"], "my score.pdf")
-        self.assertTrue((self.root / "uploads" / payload["upload"]["stored_name"]).exists())
+        self.assertEqual(set(payload), {"status", "upload", "matches", "debug", "errors"})
+        self.assertEqual(payload["status"], "created")
+        self.assertEqual(payload["upload"]["OriginalName"], "my score.pdf")
+        stored_path = Path(payload["upload"]["Source"])
+        self.assertEqual(stored_path.parent, (self.root / "uploads").resolve())
+        self.assertTrue(stored_path.name.endswith(".pdf"))
+        self.assertNotEqual(stored_path.name, "my score.pdf")
+        self.assertTrue(stored_path.exists())
         self.assertIn("/thumbnail/300 232w", payload["upload"]["thumbnail_srcset"])
         self.assertIn("/thumbnail/600 464w", payload["upload"]["thumbnail_srcset"])
+        for removed_field in ("resource_id", "stored_name", "original_name", "thumbnail_600_url", "MetaData"):
+            self.assertNotIn(removed_field, payload["upload"])
         process.assert_called_once()
         self.assertEqual(process.call_args.args[1], [])
         self.assertFalse(process.call_args.args[7])
         rows = self.app.extensions["data_manager"].rows("resource")
         self.assertEqual(len(rows), 1)
+        self.assertEqual(payload["upload"]["id"], rows[0]["id"])
         self.assertEqual(rows[0]["VisualHash"], "aabbccdd")
         self.assertEqual(rows[0]["OriginalName"], "my score.pdf")
         self.assertEqual(rows[0]["DisplayName"], "Byzantine Tone 4")
         self.assertEqual(rows[0]["UserID"], 1)
         self.assertEqual(rows[0]["FileHash"], hashlib.sha256(self.pdf_bytes()).hexdigest())
         self.assertFalse(rows[0]["MetaData"]["Tone Set"]["reviewed"])
-        self.assertEqual(payload["inferred_metadata"], {"Tone Set": "Byzantine"})
+        self.assertEqual(payload["upload"]["metadata"], {"Tone Set": "Byzantine"})
         self.assertEqual(payload["debug"]["ocr_text"], "Byzantine Tone 4")
         self.assertEqual(payload["debug"]["file_hash"], rows[0]["FileHash"])
+        detail = self.client.get(f"/api/library/{rows[0]['id']}").get_json()
+        self.assertEqual(payload["upload"], {**detail["resource"], "metadata": detail["metadata"]})
 
     def test_display_name_falls_back_to_original_filename_without_extension(self):
         self.login_demo()
@@ -201,6 +210,11 @@ class UploadRouteTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["upload"]["title"], "my score")
+        self.assertEqual(payload["upload"]["metadata"], {})
+        self.assertEqual(payload["debug"]["ocr_text"], "  \n\t")
+        self.assertEqual(payload["errors"], ["OCR unavailable"])
         resource = self.app.extensions["data_manager"].rows("resource")[0]
         self.assertEqual(resource["OriginalName"], "my score.pdf")
         self.assertEqual(resource["DisplayName"], "my score")

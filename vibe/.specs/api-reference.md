@@ -72,7 +72,7 @@ Full TypeScript declarations are in [api-client.ts](api-client.ts).
 | `RankedMatchDto` | `resource_id`, `title`, `original_name`, `composer`, nullable `hamming_distance`, `title_similarity`, `composer_similarity`, numeric `confidence`, `detail_url`, `preview_url` |
 | `BinaryResponseDto` | Client-side envelope: `body: Blob`, `content_type`, `content_disposition`; these are not server JSON fields |
 
-Nullable resource fields follow the local database schema; thumbnail URLs/srcset are null when the source file is absent. `Source` exposes a backend-local path, not a URL clients should fetch. Resource views in latest, profiles, search, and detail omit the stored `MetaData` field. Latest works, profile uploads/favorites/collection items, search results, and detail's top-level `metadata` use the same flat string-valued display map, excluding `OCR` and `FileHash`. Detail's nested `resource` remains a `ResourceDto`; its metadata is supplied separately. The display map unwraps `value` wrappers before string conversion, JSON-encodes top-level arrays, converts bare null to an empty string, and stringifies other values. Missing or null stored `MetaData` produces `{}`; the stored data is unchanged. Detail exposes OCR separately in `ocr`. The detail endpoint's `uploader` excludes `Email`; known uploaders include `UserID`, `Name`, `JoinedAt`, and `UserType`, while unknown uploaders fall back to `{Name: "Unknown user", JoinedAt: ""}`. File type detection (PDF vs image) is determined client-side by checking the file extension.
+Nullable resource fields follow the local database schema; thumbnail URLs/srcset are null when the source file is absent. `Source` exposes a backend-local path, not a URL clients should fetch. Resource views in latest, profiles, search, detail, and imports omit the stored `MetaData` field. Latest works, profile uploads/favorites/collection items, search results, created imports, and detail's top-level `metadata` use the same flat string-valued display map, excluding `OCR` and `FileHash`. Detail's nested `resource` remains a `ResourceDto`; its metadata is supplied separately. The display map unwraps `value` wrappers before string conversion, JSON-encodes top-level arrays, converts bare null to an empty string, and stringifies other values. Missing or null stored `MetaData` produces `{}`; the stored data is unchanged. Detail exposes OCR separately in `ocr`. The detail endpoint's `uploader` excludes `Email`; known uploaders include `UserID`, `Name`, `JoinedAt`, and `UserType`, while unknown uploaders fall back to `{Name: "Unknown user", JoinedAt: ""}`. File type detection (PDF vs image) is determined client-side by checking the file extension.
 
 `GET /api/library` has been removed and returns 404. Use paginated `GET /api/search` to browse the library; the client exposes `search()` instead of `getLibrary()`. The PoC links library browsing to `/search`; `/library` no longer serves a page.
 
@@ -150,12 +150,12 @@ Send multipart field `file` with its original filename. Extensions: `.pdf`, `.pn
 
 | Status | HTTP | Response |
 | --- | --- | --- |
-| `created` | 200 | `ImportCreatedResponseDto`: `upload`, `ocr`, nullable `visual_hash`, initial `matches`, `inferred_metadata: Record<string, string>`, `debug`, `errors` |
+| `created` | 200 | `ImportCreatedResponseDto`: `upload: ResourceWithMetadataDto`, initial `matches`, `debug`, `errors` |
 | `duplicate` | 200 | `ImportDuplicateResponseDto`: `match_type` (`sha256` exact file or `phash` identical first-page perceptual hash), `duplicate`, `debug`; no new copy stored |
 | `rejected` | 422 | `ImportRejectedResponseDto`: `reason: "not_sheet_music"`, `error`, `debug`, `reference_check` (distance, reference image, threshold); no new resource stored |
 | `error` | 400/401/413/415/500/503 | `{status: "error", error: string}`; thrown as `ApiError` by the client |
 
-`upload` contains `resource_id`, `stored_name`, `original_name`, `title`, `source`, thumbnail URLs/srcset, and `detail_url`. `debug` contains `file_hash`, nullable `visual_hash`, and `ocr_text`. Initial import matches have only `resource_id`, `original_name`, `visual_hash`, and `hamming_distance`; they are **not** `RankedMatchDto` and do not contain preview/detail URLs. `inferred_metadata` uses the same display-string format as `metadata` elsewhere (`MetadataDto`): it is the stored resource's metadata after import, with `OCR` and `FileHash` omitted. The stored values are still marked `source: "ocr"` and `reviewed: false` internally, but those flags are not returned. A created response may contain non-fatal OCR/thumbnail errors; do not treat `errors.length > 0` as a failed import.
+`upload` is a resource view with `id`, `OriginalName`, `Source`, `title`, thumbnail URLs/srcset, `detail_url`, `api_url`, and `metadata`. Use `upload.id` for the metadata PATCH; `upload.metadata` is the stored resource's display-string metadata after import, with `OCR` and `FileHash` omitted. The stored values are still marked `source: "ocr"` and `reviewed: false` internally, but those flags are not returned. `debug` contains `file_hash`, nullable `visual_hash`, and `ocr_text`. The created response no longer has top-level `ocr`, `visual_hash`, or `inferred_metadata`, or the former upload aliases such as `resource_id`, `stored_name`, and `original_name`. Initial import matches have only `resource_id`, `original_name`, `visual_hash`, and `hamming_distance`; they are **not** `RankedMatchDto` and do not contain preview/detail URLs. A created response may contain non-fatal OCR/thumbnail errors; do not treat `errors.length > 0` as a failed import.
 
 PATCH `/api/library/{id}` accepts:
 
@@ -221,7 +221,7 @@ async function importScore(file: File) {
   try {
     const result = await api.checkImport({ file, filename: file.name });
     if (result.status === "created") {
-      return api.updateResource(result.upload.resource_id, {
+      return api.updateResource(result.upload.id, {
         DisplayName: result.upload.title,
         metadata: { Language: "English" },
       });
@@ -240,4 +240,4 @@ const objectUrl = URL.createObjectURL(download.body);
 URL.revokeObjectURL(objectUrl);
 ```
 
-The wrapper requires standard fetch, FormData, Blob, URLSearchParams, and AbortSignal APIs (modern browsers or a compatible native/Node adapter). Pass an `AbortSignal` as the method's options argument for cancellation. The TypeScript source is a handoff artifact for another frontend; the existing vanilla-JS PoC does not import it and still has no frontend build step. Validate with TypeScript using `--strict --noEmit --target ES2022 --module ES2022 --lib ES2022,DOM api-client.ts`.
+The wrapper requires standard fetch, FormData, Blob, URLSearchParams, and AbortSignal APIs (modern browsers or a compatible native/Node adapter). Pass an `AbortSignal` as the method's options argument for cancellation. The TypeScript source is a handoff artifact for another frontend; the existing vanilla-JS PoC does not import it and still has no frontend build step. Validate with TypeScript using `--strict --noEmit --target ES2022 --module ES2022 --lib ES2022,DOM api-client.ts`. With frontend dependencies installed, run `.\frontend\node_modules\.bin\tsc.cmd --strict --noEmit --target ES2022 --module ES2022 --lib ES2022,DOM vibe\tests\test_api_client.ts` from the repository root to check the import response type in both client copies.

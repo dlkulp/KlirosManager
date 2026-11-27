@@ -21,7 +21,7 @@ The user must be logged in. The server runs these checks in order and stops at t
    - extracts the text: from the PDF's text layer for MuseScore, Sibelius or LilyPond PDFs, otherwise with OCR;
    - finds visual matches within `max_hamming_distance` (default 10);
    - infers metadata (for example Tone or Style) from the text.
-8. **Save.** It stores the file and thumbnails and inserts a `resource` row. The title is the first line of text, or the file name if there is none. The response is `status: "created"`, with `inferred_metadata`, OCR text and matches.
+8. **Save.** It stores the file and thumbnails and inserts a `resource` row. The title is the first line of text, or the file name if there is none. The response is `status: "created"`, with the resource and its `metadata` in `upload`, OCR text in `debug`, and matches.
 
 ### 2. Review details: `PATCH /api/library/<id>`
 

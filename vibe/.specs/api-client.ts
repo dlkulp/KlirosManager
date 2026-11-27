@@ -183,21 +183,8 @@ export interface ImportMatchDto {
 }
 export interface ImportCreatedResponseDto {
   status: "created";
-  upload: {
-    resource_id: number;
-    stored_name: string;
-    original_name: string;
-    title: string;
-    source: string;
-    thumbnail_url: string;
-    thumbnail_600_url: string;
-    thumbnail_srcset: string;
-    detail_url: string;
-  };
-  ocr: OcrDto;
-  visual_hash: string | null;
+  upload: ResourceWithMetadataDto;
   matches: ImportMatchDto[];
-  inferred_metadata: MetadataDto;
   debug: ImportDebugDto;
   errors: string[];
 }

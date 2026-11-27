@@ -2,6 +2,8 @@
 
 This file holds durable repository knowledge. It is checked in so every contributor and coding agent sees it. Keep each note short and put details in the relevant README; when you learn something that would help the next person, add it here or to that README instead of keeping it in personal or tool-specific memory.
 
+- This is not a Flash/Elosity project; do not use Flash/Elosity-specific skills or tools here.
+
 ## Layout
 
 - `vibe/`: Python Flask proof of concept (score import, OCR, hashing, metadata). Setup, settings and API are in [vibe/README.md](vibe/README.md).
