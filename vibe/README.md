@@ -55,6 +55,8 @@ Relative paths resolve from this project directory; absolute paths are also acce
 
 `db.json` and each settings update use atomic file replacement. This store is intended for one local Flask process, not concurrent writers or multiple app instances. Back up `db.json` and the upload folder together if the local library matters.
 
+Schema version 10 adds `flag_reports` and the seeded `flag_report_reasons` lookup. Existing JSON databases migrate automatically when opened, preserving resources, users, collections, and prior schema migrations. The SQL reference schema in `../server/db/create_db.sql` includes the same new tables; the Flask PoC does not connect to or migrate a MySQL server.
+
 ## API
 
 Browser routes `/`, `/search`, `/profile`, `/profile/<id>`, `/import`, and `/library/<id>` serve static HTML shells. Page data is provided by JSON APIs: `GET /api/session`, `/api/latest` (optionally `/api/latest/<count>`, default 3, capped at 10), `/api/library/<id>`, `/api/profile`, `/api/search` (query, `filters`, `page`, `page_size`, and `sort`), and `/api/search/facets` (metadata filter choices). `/api/library` and the `/library` page have been removed; use paginated search for library browsing. Authentication is exposed through `POST /api/login` and `/api/logout`. API DTOs and the TypeScript client are documented in [.specs/api-reference.md](.specs/api-reference.md).
@@ -71,7 +73,9 @@ Latest works and profile uploads, favorites, and collection items include a flat
 
 `/search` displays all scores initially, with live text and metadata filters, 24/48/96-item pages, and upload-date, popularity, or name sorting. Text search covers titles and metadata values. Popularity uses download counts when present, otherwise favorites.
 
-On detail pages, **Add to Collection** opens a selector where owners can save or remove the work from their collections or create a new collection. **Report to Moderator** currently displays a thank-you only; reasons and details are not sent or stored.
+On detail pages, **Add to Collection** opens a selector where owners can save or remove the work from their collections or create a new collection. **Report to Moderator** loads the reason codes/display messages from `GET /api/flag-report-reasons` and stores one reason plus optional notes through `POST /api/library/<id>/flags`, including for anonymous visitors. Notes are limited to 2000 characters; confirmation is shown only after a successful save.
+
+Admins can review the oldest unresolved reports through `GET /api/admin/flag-reports` and record a decision with `PATCH /api/admin/flag-reports/<id>/resolve`, sending `is_sustained` and optional `resolution_notes`. Resolution preserves the score unchanged and retains the report history. Moderators cannot access these admin endpoints. There is no admin review page yet; see [.specs/api-reference.md](.specs/api-reference.md#flag-reports) for the contracts.
 
 ## Score PDF extraction
 

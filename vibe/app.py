@@ -14,7 +14,7 @@ from typing import Any
 from flask import Flask, abort, jsonify, redirect, request, send_file, session, url_for
 from werkzeug.utils import secure_filename
 
-from data_manager import DataManager
+from data_manager import DataManager, FlagReportConflictError
 from service.UploadService import UploadService, UploadValidationError
 from service.FileProcessing import FileProcessing
 from settings_manager import SettingsManager
@@ -136,6 +136,67 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         if user is None:
             return jsonify({"error": "User not found."}), 404
         return jsonify({"user_id": user["UserID"], "user_type": user["UserType"]})
+
+    @app.get("/api/flag-report-reasons")
+    def api_flag_report_reasons():
+        return jsonify({"reasons": data_manager.flag_report_reasons()})
+
+    @app.post("/api/library/<int:resource_id>/flags")
+    def api_create_flag_report(resource_id: int):
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "Send a JSON object."}), 400
+        user_id = session.get("user_id") if is_logged_in() else None
+        try:
+            report = data_manager.create_flag_report(
+                resource_id, user_id, payload.get("reason"), payload.get("notes", ""),
+            )
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        if report is None:
+            return jsonify({"error": "Work not found."}), 404
+        return jsonify({"flag_report_id": report["id"]}), 201
+
+    @app.get("/api/admin/flag-reports")
+    def api_pending_flag_reports():
+        if not is_logged_in():
+            return jsonify({"error": "Log in to review flag reports."}), 401
+        if not is_admin():
+            return jsonify({"error": "Admin access is required."}), 403
+        reports = [
+            {
+                **report,
+                "resource": {
+                    **_resource_view(report["resource"], url_for),
+                    "metadata": _resource_metadata_view(report["resource"]),
+                },
+            }
+            for report in data_manager.pending_flag_reports()
+        ]
+        return jsonify({"flag_reports": reports})
+
+    @app.patch("/api/admin/flag-reports/<int:report_id>/resolve")
+    def api_resolve_flag_report(report_id: int):
+        if not is_logged_in():
+            return jsonify({"error": "Log in to resolve flag reports."}), 401
+        if not is_admin():
+            return jsonify({"error": "Admin access is required."}), 403
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "Send a JSON object."}), 400
+        try:
+            report = data_manager.resolve_flag_report(
+                report_id, session["user_id"], payload.get("is_sustained"), payload.get("resolution_notes", ""),
+            )
+        except FlagReportConflictError as error:
+            return jsonify({"error": str(error)}), 409
+        except PermissionError as error:
+            return jsonify({"error": str(error)}), 403
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        if report is None:
+            return jsonify({"error": "Flag report not found."}), 404
+        return jsonify({"flag_report": report})
 
     @app.get("/")
     def home():

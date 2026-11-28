@@ -46,6 +46,40 @@ CREATE TABLE `kliros_manager`.`resource` (
 	CONSTRAINT `resource_ibfk_2` FOREIGN KEY (`GroupID`) REFERENCES `resource` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
+CREATE TABLE `kliros_manager`.`flag_report_reasons` (
+	`Code` varchar(64) NOT NULL,
+	`DisplayMessage` varchar(255) NOT NULL,
+	PRIMARY KEY (`Code`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+INSERT INTO `kliros_manager`.`flag_report_reasons` (`Code`, `DisplayMessage`) VALUES
+	('copyright', 'Copyright or sharing rights concern'),
+	('inappropriate', 'Inappropriate content'),
+	('not_church_music', 'Not church music'),
+	('metadata_mismatch', 'Incorrect or mismatched metadata'),
+	('duplicate', 'Duplicate resource'),
+	('other', 'Other');
+
+CREATE TABLE `kliros_manager`.`flag_reports` (
+	`id` int NOT NULL AUTO_INCREMENT,
+	`ResourceID` int NOT NULL,
+	`UserID` int DEFAULT NULL,
+	`ReasonCode` varchar(64) NOT NULL,
+	`Notes` varchar(2000) NOT NULL DEFAULT '',
+	`CreationDate` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	`ResolutionDate` datetime DEFAULT NULL,
+	`IsSustained` boolean NOT NULL DEFAULT false,
+	`ResolutionUserID` int DEFAULT NULL,
+	`ResolutionNotes` varchar(2000) NOT NULL DEFAULT '',
+	PRIMARY KEY (`id`),
+	KEY `flag_reports_pending` (`ResolutionDate`, `CreationDate`, `id`),
+	KEY `flag_reports_resource` (`ResourceID`),
+	CONSTRAINT `flag_reports_resource_fk` FOREIGN KEY (`ResourceID`) REFERENCES `resource` (`id`),
+	CONSTRAINT `flag_reports_user_fk` FOREIGN KEY (`UserID`) REFERENCES `user` (`UserID`),
+	CONSTRAINT `flag_reports_reason_fk` FOREIGN KEY (`ReasonCode`) REFERENCES `flag_report_reasons` (`Code`),
+	CONSTRAINT `flag_reports_resolver_fk` FOREIGN KEY (`ResolutionUserID`) REFERENCES `user` (`UserID`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
 CREATE TABLE `kliros_manager`.`favorites` (
 	`UserID` int NOT NULL,
 	`ResourceID` int NOT NULL,

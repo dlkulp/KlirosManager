@@ -16,7 +16,7 @@ Reference for the current Flask PoC in `vibe/app.py`. The dependency-free TypeSc
 
 ## Endpoint Index
 
-All successful responses below use HTTP 200. `Auth` means a signed-in cookie session is required.
+Successful responses use HTTP 200 except flag-report creation, which uses HTTP 201. `Auth` means a signed-in cookie session is required.
 
 | Method | Path | Auth | Request | Response DTO |
 | --- | --- | --- | --- | --- |
@@ -40,6 +40,10 @@ All successful responses below use HTTP 200. `Auth` means a signed-in cookie ses
 | DELETE | `/api/profile/collections/{collectionId}` | Yes | Collection ID; no body | `DeleteCollectionResponseDto` |
 | DELETE | `/api/profile/collections/{collectionId}/items/{resourceId}` | Yes | IDs; no body | `RemoveCollectionItemResponseDto` |
 | PATCH | `/api/admin/users/{userId}/type` | Admin | `UpdateUserTypeRequestDto` JSON | `UpdateUserTypeResponseDto` |
+| GET | `/api/flag-report-reasons` | No | None | `FlagReportReasonsResponseDto` |
+| POST | `/api/library/{id}/flags` | No | `CreateFlagReportRequestDto` JSON | `CreateFlagReportResponseDto` (201) |
+| GET | `/api/admin/flag-reports` | Admin | None | `PendingFlagReportsResponseDto` |
+| PATCH | `/api/admin/flag-reports/{reportId}/resolve` | Admin | `ResolveFlagReportRequestDto` JSON | `ResolveFlagReportResponseDto` |
 | POST | `/api/library/import/check` | Yes | `ImportCheckRequestDto` as multipart | `ImportCheckResponseDto` |
 | GET | `/api/library/{id}/file` | No | Resource ID | Binary original; `BinaryResponseDto` in wrapper |
 | GET | `/api/library/{id}/download` | No | Resource ID | Binary attachment; `BinaryResponseDto` in wrapper |
@@ -70,6 +74,10 @@ Full TypeScript declarations are in [api-client.ts](api-client.ts).
 | `ResourceDetailResponseDto` | `resource`, `original_name`, `uploader` (`Name`, `JoinedAt`, and, for known users, `UserID` and `UserType`; never `Email`), `uploader_initials`, `is_favorite`, `ocr`, `metadata`, `file_url`, `download_url` |
 | `OcrDto` | `status` (`success`, `unavailable`, `error`), `text`, `message`; when a notation-software extractor read the PDF, also `source` (e.g. `musescore`), `title`, and `lyrics` (one string per verse). Detail's `ocr` may be empty when absent |
 | `RankedMatchDto` | `resource_id`, `title`, `original_name`, `composer`, nullable `hamming_distance`, `title_similarity`, `composer_similarity`, numeric `confidence`, `detail_url`, `preview_url` |
+| `FlagReportReasonDto` | `Code`, `DisplayMessage`; reason codes and user-facing labels come from `flag_report_reasons` |
+| `FlagReportDto` | `id`, `ResourceID`, nullable reporter `UserID`, `ReasonCode`, `Notes`, `CreationDate`, nullable `ResolutionDate`, `IsSustained`, nullable `ResolutionUserID`, `ResolutionNotes` |
+| `FlagReportReviewDto` | `FlagReportDto` plus `reason: FlagReportReasonDto` and `resource: ResourceWithMetadataDto` |
+| `PendingFlagReportsResponseDto` | `flag_reports: FlagReportReviewDto[]`, unresolved reports oldest first |
 | `BinaryResponseDto` | Client-side envelope: `body: Blob`, `content_type`, `content_disposition`; these are not server JSON fields |
 
 Nullable resource fields follow the local database schema; thumbnail URLs/srcset are null when the source file is absent. `Source` exposes a backend-local path, not a URL clients should fetch. Resource views in latest, profiles, search, detail, and imports omit the stored `MetaData` field. Latest works, profile uploads/favorites/collection items, search results, created imports, and detail's top-level `metadata` use the same flat string-valued display map, excluding `OCR` and `FileHash`. Detail's nested `resource` remains a `ResourceDto`; its metadata is supplied separately. The display map unwraps `value` wrappers before string conversion, JSON-encodes top-level arrays, converts bare null to an empty string, and stringifies other values. Missing or null stored `MetaData` produces `{}`; the stored data is unchanged. Detail exposes OCR separately in `ocr`. The detail endpoint's `uploader` excludes `Email`; known uploaders include `UserID`, `Name`, `JoinedAt`, and `UserType`, while unknown uploaders fall back to `{Name: "Unknown user", JoinedAt: ""}`. File type detection (PDF vs image) is determined client-side by checking the file extension.
@@ -118,6 +126,30 @@ Collection authorization is ownership-based regardless of `Public`. There are no
 The SQL and JSON schemas use a `UserType` enum with `regular`, `moderator`, and `admin`; new database users default to `regular`, while the seeded `Local Admin` is `admin`. Existing JSON database schema-version-7 accounts migrate to `regular`, except user ID 1, which remains/becomes `admin`.
 
 `PATCH /api/admin/users/{userId}/type` accepts `{"user_type":"moderator"}` or `{"user_type":"regular"}` and returns `{ "user_id": number, "user_type": "regular" | "moderator" }`. Only a signed-in admin can call it. Anonymous requests return 401, signed-in non-admin requests return 403, unknown users return 404, and invalid input returns 400. Admin users cannot be demoted through this endpoint, and the endpoint cannot grant admin status.
+
+## Flag Reports
+
+Each report has one reason. `GET /api/flag-report-reasons` is public and returns `{reasons: [{Code, DisplayMessage}]}`. Starter codes are `copyright`, `inappropriate`, `not_church_music`, `metadata_mismatch`, and `other`. Clients should use the table's display messages rather than hard-code labels or a closed list of codes. There is no reason-management API.
+
+`POST /api/library/{id}/flags` accepts:
+
+```json
+{"reason": "copyright", "notes": "Please verify the sharing rights."}
+```
+
+It returns HTTP 201 with `{flag_report_id: number}`. Anonymous reports store `UserID: null`; signed-in reports use the session user, never a client-supplied ID. An invalid/deleted-user session is treated as anonymous. No reporter or resolution details are exposed by this public response. Missing/deleted resources return 404. Missing or unknown reasons, non-object JSON, and invalid notes return 400. `notes` is optional (default `""`), must be a string of at most 2000 characters, and is trimmed before storage. Multiple reports may target the same resource; this write should not be blindly retried.
+
+`GET /api/admin/flag-reports` returns unresolved reports only, ordered by `CreationDate` ascending and then report `id` ascending for ties. Each entry includes the report, its reason/display message, and the resource view with display metadata. Reports remain in the queue even if their score is later soft-deleted; the resource's `Deleted` flag is included, but its detail/media endpoints still return 404. The queue does not expose raw resource `MetaData`.
+
+`PATCH /api/admin/flag-reports/{reportId}/resolve` accepts:
+
+```json
+{"is_sustained": true, "resolution_notes": "The concern was confirmed."}
+```
+
+`is_sustained` must be a JSON boolean. `resolution_notes` is optional (default `""`), must be a string of at most 2000 characters, and is trimmed. The server records `ResolutionDate`, `ResolutionUserID` from the admin session, `IsSustained`, and `ResolutionNotes`, returning `{flag_report: FlagReportDto}`. It does **not** modify, delete, or hide the score. Resolved reports are retained for history but leave the pending queue; repeated resolution returns 409 without overwriting the first decision. Missing report IDs return 404. Unresolved reports start with `IsSustained: false`; `ResolutionDate: null`, not the boolean, identifies them as pending.
+
+Both admin endpoints return 401 without a valid session and 403 for regular users and moderators. The client exposes `getFlagReportReasons()`, `reportResource(id, request)`, `getPendingFlagReports()`, and `resolveFlagReport(id, request)`. The vanilla-JS detail page's **Report to Moderator** dialog works for guests, loads these reason labels, submits the report, and shows confirmation only after a successful response. Errors retain the draft for retry.
 
 ## Metadata Definitions
 

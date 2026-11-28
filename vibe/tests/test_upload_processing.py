@@ -41,6 +41,114 @@ class UploadRouteTests(unittest.TestCase):
     def login_demo(self):
         return self.client.post("/login")
 
+    def test_flag_reports_allow_anonymous_and_session_users_without_identity_spoofing(self):
+        manager = self.app.extensions["data_manager"]
+        resource = manager.insert_resource({"OriginalName": "score.pdf", "UserID": 1})
+        reasons = self.client.get("/api/flag-report-reasons")
+        self.assertEqual(reasons.status_code, 200)
+        self.assertEqual(
+            [reason["Code"] for reason in reasons.get_json()["reasons"]],
+            ["copyright", "inappropriate", "not_church_music", "metadata_mismatch", "other"],
+        )
+        self.assertTrue(all(reason["DisplayMessage"] for reason in reasons.get_json()["reasons"]))
+        endpoint = f"/api/library/{resource['id']}/flags"
+        anonymous = self.client.post(endpoint, json={"reason": "copyright", "notes": "Concern", "user_id": 1})
+        self.assertEqual(anonymous.status_code, 201)
+        self.assertEqual(anonymous.get_json(), {"flag_report_id": 1})
+        self.assertIsNone(manager.rows("flag_reports")[0]["UserID"])
+        with self.client.session_transaction() as session_data:
+            session_data["user_id"] = 3
+        signed_in = self.client.post(endpoint, json={"reason": "metadata_mismatch", "notes": "x" * 2000})
+        self.assertEqual(signed_in.status_code, 201)
+        self.assertEqual(manager.rows("flag_reports")[1]["UserID"], 3)
+        with self.client.session_transaction() as session_data:
+            session_data["user_id"] = 999
+        self.assertEqual(self.client.post(endpoint, json={"reason": "other"}).status_code, 201)
+        self.assertIsNone(manager.rows("flag_reports")[2]["UserID"])
+
+    def test_flag_reason_codes_and_messages_come_from_the_table(self):
+        manager = self.app.extensions["data_manager"]
+        resource = manager.insert_resource({"OriginalName": "score.pdf", "UserID": 1})
+        database_path = self.root / "db.json"
+        database = json.loads(database_path.read_text(encoding="utf-8"))
+        database["tables"]["flag_report_reasons"]["rows"][0]["DisplayMessage"] = "Updated rights label"
+        database["tables"]["flag_report_reasons"]["rows"].append({"Code": "poor_quality", "DisplayMessage": "Poor quality"})
+        database_path.write_text(json.dumps(database), encoding="utf-8")
+        reasons = self.client.get("/api/flag-report-reasons").get_json()["reasons"]
+        self.assertEqual(reasons[0]["DisplayMessage"], "Updated rights label")
+        self.assertEqual(reasons[-1]["Code"], "poor_quality")
+        response = self.client.post(f"/api/library/{resource['id']}/flags", json={"reason": "poor_quality"})
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(DataManager(database_path).rows("flag_reports")[0]["ReasonCode"], "poor_quality")
+
+    def test_flag_reports_reject_invalid_requests_and_missing_or_deleted_scores(self):
+        manager = self.app.extensions["data_manager"]
+        resource = manager.insert_resource({"OriginalName": "score.pdf", "UserID": 1})
+        endpoint = f"/api/library/{resource['id']}/flags"
+        for payload in ([], {}, {"reason": ["other"]}, {"reason": "unknown"},
+                        {"reason": "other", "notes": None}, {"reason": "other", "notes": "x" * 2001}):
+            with self.subTest(payload_type=type(payload).__name__):
+                response = self.client.post(endpoint, json=payload)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("error", response.get_json())
+        self.assertEqual(self.client.post(endpoint, data="{", content_type="application/json").status_code, 400)
+        self.assertEqual(self.client.post("/api/library/999/flags", json={"reason": "other"}).status_code, 404)
+        manager.delete_resource(resource["id"], 1)
+        self.assertEqual(self.client.post(endpoint, json={"reason": "other"}).status_code, 404)
+        self.assertEqual(manager.rows("flag_reports"), [])
+
+    def test_flag_review_and_resolution_are_admin_only_and_keep_resolved_history(self):
+        manager = self.app.extensions["data_manager"]
+        resource = manager.insert_resource({"OriginalName": "score.pdf", "UserID": 3, "MetaData": {"Language": "English"}})
+        first = manager.create_flag_report(resource["id"], None, "copyright", "First")
+        second = manager.create_flag_report(resource["id"], 3, "other", "Second")
+        queue_url = "/api/admin/flag-reports"
+        resolve_url = f"{queue_url}/{first['id']}/resolve"
+        for user_id, status in ((None, 401), (2, 403), (3, 403), (999, 401)):
+            with self.client.session_transaction() as session_data:
+                session_data["user_id"] = user_id
+            self.assertEqual(self.client.get(queue_url).status_code, status)
+            self.assertEqual(self.client.patch(resolve_url, json={"is_sustained": True}).status_code, status)
+        self.login_demo()
+        queue = self.client.get(queue_url).get_json()["flag_reports"]
+        self.assertEqual([row["id"] for row in queue], [first["id"], second["id"]])
+        self.assertEqual(queue[0]["resource"]["metadata"], {"Language": "English"})
+        self.assertNotIn("MetaData", queue[0]["resource"])
+        self.assertEqual(queue[0]["reason"]["Code"], "copyright")
+        self.assertIsNone(queue[0]["ResolutionDate"])
+        self.assertFalse(queue[0]["IsSustained"])
+        response = self.client.patch(resolve_url, json={"is_sustained": True, "resolution_notes": " Valid concern "})
+        self.assertEqual(response.status_code, 200)
+        resolved = response.get_json()["flag_report"]
+        self.assertTrue(resolved["IsSustained"])
+        self.assertEqual(resolved["ResolutionUserID"], 1)
+        self.assertEqual(resolved["ResolutionNotes"], "Valid concern")
+        self.assertTrue(resolved["ResolutionDate"])
+        self.assertEqual(manager.rows("resource"), [resource])
+        self.assertEqual(self.client.patch(resolve_url, json={"is_sustained": False}).status_code, 409)
+        self.assertEqual(self.client.get(queue_url).get_json()["flag_reports"][0]["id"], second["id"])
+        manager.delete_resource(resource["id"], 1)
+        self.assertTrue(self.client.get(queue_url).get_json()["flag_reports"][0]["resource"]["Deleted"])
+        dismissed = self.client.patch(f"{queue_url}/{second['id']}/resolve", json={"is_sustained": False})
+        self.assertEqual(dismissed.status_code, 200)
+        self.assertFalse(dismissed.get_json()["flag_report"]["IsSustained"])
+        self.assertEqual(self.client.get(queue_url).get_json(), {"flag_reports": []})
+        self.assertEqual(len(DataManager(self.root / "db.json").rows("flag_reports")), 2)
+
+    def test_flag_resolution_requires_boolean_and_bounded_notes(self):
+        manager = self.app.extensions["data_manager"]
+        resource = manager.insert_resource({"OriginalName": "score.pdf", "UserID": 1})
+        report = manager.create_flag_report(resource["id"], None, "other", "")
+        self.login_demo()
+        endpoint = f"/api/admin/flag-reports/{report['id']}/resolve"
+        for payload in ({}, {"is_sustained": 1}, {"is_sustained": "true"}, {"is_sustained": None},
+                        {"is_sustained": True, "resolution_notes": None},
+                        {"is_sustained": False, "resolution_notes": "x" * 2001}):
+            self.assertEqual(self.client.patch(endpoint, json=payload).status_code, 400)
+        self.assertIsNone(manager.rows("flag_reports")[0]["ResolutionDate"])
+        self.assertEqual(self.client.patch("/api/admin/flag-reports/999/resolve", json={"is_sustained": True}).status_code, 404)
+        self.assertEqual(self.client.patch(endpoint, json={"is_sustained": False, "resolution_notes": "x" * 2000}).status_code, 200)
+
     def test_api_cors_allows_configured_frontends_with_credentials_and_preflight(self):
         origin = "http://localhost:5173"
         response = self.client.get("/api/session", headers={"Origin": origin})
@@ -444,9 +552,8 @@ class UploadRouteTests(unittest.TestCase):
         self.assertIn('id="detail-title"', detail)
         self.assertIn('id="open-report-dialog"', detail)
         self.assertIn('id="report-dialog"', detail)
-        self.assertIn("Not sheet music", detail)
-        self.assertIn("Questionable", detail)
-        self.assertIn("Copyright", detail)
+        self.assertIn('id="report-reason"', detail)
+        self.assertIn('id="report-submit"', detail)
         self.assertEqual(payload["uploader"]["Name"], "Local Admin")
         self.assertNotIn("Email", payload["uploader"])
         self.assertEqual(

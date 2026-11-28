@@ -71,7 +71,32 @@ TABLE_COLUMNS: dict[str, list[dict[str, Any]]] = {
         {"name": "Order", "type": "int", "nullable": True, "default": None},
         {"name": "Annotation", "type": "varchar(255)", "nullable": True, "default": None},
     ],
+    "flag_report_reasons": [
+        {"name": "Code", "type": "varchar(64)", "nullable": False, "primary_key": True},
+        {"name": "DisplayMessage", "type": "varchar(255)", "nullable": False},
+    ],
+    "flag_reports": [
+        {"name": "id", "type": "int", "nullable": False, "primary_key": True},
+        {"name": "ResourceID", "type": "int", "nullable": False, "references": ["resource", "id"]},
+        {"name": "UserID", "type": "int", "nullable": True, "default": None, "references": ["user", "UserID"]},
+        {"name": "ReasonCode", "type": "varchar(64)", "nullable": False, "references": ["flag_report_reasons", "Code"]},
+        {"name": "Notes", "type": "varchar(2000)", "nullable": False, "default": ""},
+        {"name": "CreationDate", "type": "datetime", "nullable": False, "default": "CURRENT_TIMESTAMP"},
+        {"name": "ResolutionDate", "type": "datetime", "nullable": True, "default": None},
+        {"name": "IsSustained", "type": "boolean", "nullable": False, "default": False},
+        {"name": "ResolutionUserID", "type": "int", "nullable": True, "default": None, "references": ["user", "UserID"]},
+        {"name": "ResolutionNotes", "type": "varchar(2000)", "nullable": False, "default": ""},
+    ],
 }
+
+FLAG_REPORT_REASONS_SEED = [
+    {"Code": "copyright", "DisplayMessage": "Copyright or sharing rights concern"},
+    {"Code": "inappropriate", "DisplayMessage": "Inappropriate content"},
+    {"Code": "not_church_music", "DisplayMessage": "Not church music"},
+    {"Code": "metadata_mismatch", "DisplayMessage": "Incorrect or mismatched metadata"},
+    {"Code": "duplicate", "DisplayMessage": "Duplicate resource"},
+    {"Code": "other", "DisplayMessage": "Other"},
+]
 
 METADATA_SEED = [
     {"Name": "Composer", "Type": "string", "Options": None, "Core": True, "Extracted": False, "Required": False, "Searchable": False},
@@ -100,7 +125,12 @@ ID_COLUMNS = {
     "metadata": ("id", "id"),
     "collection": ("id", "id"),
     "collection_member": ("id", "id"),
+    "flag_reports": ("id", "id"),
 }
+
+
+class FlagReportConflictError(ValueError):
+    """A report's recorded resolution cannot be overwritten."""
 
 
 class DataManager:
@@ -122,7 +152,7 @@ class DataManager:
             for name, columns in TABLE_COLUMNS.items()
         }
         database = {
-            "schema_version": 9,
+            "schema_version": 10,
             "tables": tables,
             "next_ids": {name: 1 for name in TABLE_COLUMNS},
         }
@@ -155,6 +185,7 @@ class DataManager:
         for row_id, metadata in enumerate(METADATA_SEED, start=1):
             database["tables"]["metadata"]["rows"].append({"id": row_id, **copy.deepcopy(metadata)})
         database["next_ids"]["metadata"] = len(METADATA_SEED) + 1
+        database["tables"]["flag_report_reasons"]["rows"] = copy.deepcopy(FLAG_REPORT_REASONS_SEED)
         return database
 
     def _read(self) -> dict[str, Any]:
@@ -249,12 +280,35 @@ class DataManager:
                 collection_table["columns"] = copy.deepcopy(TABLE_COLUMNS["collection"])
                 database["schema_version"] = 9
                 self._write(database)
+        migrating_flag_schema = database.get("schema_version") == 9
+        if migrating_flag_schema:
+            for name in ("flag_report_reasons", "flag_reports"):
+                if name not in database["tables"]:
+                    database["tables"][name] = {
+                        "columns": copy.deepcopy(TABLE_COLUMNS[name]),
+                        "rows": copy.deepcopy(FLAG_REPORT_REASONS_SEED) if name == "flag_report_reasons" else [],
+                    }
+                table = database["tables"][name]
+                if (
+                    not isinstance(table, dict)
+                    or table.get("columns") != TABLE_COLUMNS[name]
+                    or not isinstance(table.get("rows"), list)
+                ):
+                    raise ValueError(f"Local database table '{name}' is malformed.")
+            database["next_ids"].setdefault(
+                "flag_reports",
+                max((row["id"] for row in database["tables"]["flag_reports"]["rows"]), default=0) + 1,
+            )
+            database["next_ids"].setdefault("flag_report_reasons", 1)
+            database["schema_version"] = 10
         for name, columns in TABLE_COLUMNS.items():
             table = database["tables"].get(name)
             if not isinstance(table, dict) or not isinstance(table.get("rows"), list):
                 raise ValueError(f"Local database table '{name}' is missing or malformed.")
             if table.get("columns") != columns:
                 raise ValueError(f"Local database schema for table '{name}' does not match this app version.")
+        if migrating_flag_schema:
+            self._write(database)
         return database
 
     def _write(self, database: dict[str, Any]) -> None:
@@ -294,6 +348,93 @@ class DataManager:
 
     def metadata_definitions(self) -> list[dict[str, Any]]:
         return self.rows("metadata")
+
+    def flag_report_reasons(self) -> list[dict[str, Any]]:
+        return self.rows("flag_report_reasons")
+
+    @staticmethod
+    def _flag_notes(notes: str) -> str:
+        if not isinstance(notes, str) or len(notes) > 2000:
+            raise ValueError("Notes must be a string of at most 2000 characters.")
+        return notes.strip()
+
+    def create_flag_report(
+        self, resource_id: int, user_id: int | None, reason_code: str, notes: str = "",
+    ) -> dict[str, Any] | None:
+        notes = self._flag_notes(notes)
+        with self._lock:
+            database = self._read()
+            tables = database["tables"]
+            if not isinstance(reason_code, str) or not any(
+                row["Code"] == reason_code for row in tables["flag_report_reasons"]["rows"]
+            ):
+                raise ValueError("Choose a valid flag reason.")
+            if user_id is not None and (
+                type(user_id) is not int
+                or not any(row["UserID"] == user_id for row in tables["user"]["rows"])
+            ):
+                raise ValueError("UserID must reference an existing user.")
+            if not any(
+                row["id"] == resource_id and not row.get("Deleted", False)
+                for row in tables["resource"]["rows"]
+            ):
+                return None
+            report = {
+                "id": database["next_ids"]["flag_reports"],
+                "ResourceID": resource_id,
+                "UserID": user_id,
+                "ReasonCode": reason_code,
+                "Notes": notes,
+                "CreationDate": datetime.now().replace(microsecond=0).isoformat(sep=" "),
+                "ResolutionDate": None,
+                "IsSustained": False,
+                "ResolutionUserID": None,
+                "ResolutionNotes": "",
+            }
+            tables["flag_reports"]["rows"].append(report)
+            database["next_ids"]["flag_reports"] += 1
+            self._write(database)
+            return copy.deepcopy(report)
+
+    def pending_flag_reports(self) -> list[dict[str, Any]]:
+        with self._lock:
+            tables = self._read()["tables"]
+            resources = {row["id"]: row for row in tables["resource"]["rows"]}
+            reasons = {row["Code"]: row for row in tables["flag_report_reasons"]["rows"]}
+            reports = sorted(
+                (row for row in tables["flag_reports"]["rows"] if row["ResolutionDate"] is None),
+                key=lambda row: (row["CreationDate"], row["id"]),
+            )
+            return copy.deepcopy([
+                {**row, "resource": resources[row["ResourceID"]], "reason": reasons[row["ReasonCode"]]}
+                for row in reports
+            ])
+
+    def resolve_flag_report(
+        self, report_id: int, user_id: int, is_sustained: bool, notes: str = "",
+    ) -> dict[str, Any] | None:
+        if not isinstance(is_sustained, bool):
+            raise ValueError("is_sustained must be a boolean.")
+        notes = self._flag_notes(notes)
+        with self._lock:
+            database = self._read()
+            tables = database["tables"]
+            user = next((row for row in tables["user"]["rows"] if row["UserID"] == user_id), None)
+            if type(user_id) is not int or user is None or user.get("UserType") != "admin":
+                raise PermissionError("Admin access is required.")
+            report = next((row for row in tables["flag_reports"]["rows"] if row["id"] == report_id), None)
+            if report is None:
+                return None
+            if report["ResolutionDate"] is not None:
+                raise FlagReportConflictError("Flag report is already resolved.")
+            report.update({
+                "ResolutionDate": datetime.now().replace(microsecond=0).isoformat(sep=" "),
+                "IsSustained": is_sustained,
+                "ResolutionUserID": user_id,
+                "ResolutionNotes": notes,
+            })
+            self._write(database)
+            return copy.deepcopy(report)
 
     SEARCH_SORTS = ("uploaded", "popularity", "name")
     SEARCH_PAGE_SIZES = (24, 48, 96)

@@ -107,20 +107,18 @@
       </div>
       <form id="report-form">
         <label for="report-reason">Reason</label>
-        <select id="report-reason" name="reason" required>
+        <select id="report-reason" name="reason" required disabled>
           <option value="">Choose a reason</option>
-          <option>Not sheet music</option>
-          <option>Questionable</option>
-          <option>Copyright</option>
         </select>
         <label for="report-details">Additional details</label>
-        <textarea id="report-details" name="details" rows="4" maxlength="2000" placeholder="Add context for the moderator"></textarea>
+        <textarea id="report-details" name="notes" rows="4" maxlength="2000" placeholder="Add context for the moderator"></textarea>
+        <p id="report-error" class="request-error" role="alert" hidden></p>
         <div class="report-form-actions">
           <button id="cancel-report" class="secondary outline" type="button">Cancel</button>
-          <button type="submit">Send report</button>
+          <button id="report-submit" type="submit" disabled>Send report</button>
         </div>
       </form>
-      <p id="report-thanks" class="report-thanks" role="status" aria-live="polite" hidden>Thank you for letting us know. Reports are not sent or stored yet.</p>
+      <p id="report-thanks" class="report-thanks" role="status" aria-live="polite" hidden>Thank you for letting us know. Your report has been sent for review.</p>
     </dialog>
   </main>
 </body>

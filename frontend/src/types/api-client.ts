@@ -169,6 +169,30 @@ export interface RemoveCollectionItemResponseDto { removed: boolean; resource_id
 export interface UpdateUserTypeRequestDto { user_type: Exclude<UserTypeDto, "admin"> }
 export interface UpdateUserTypeResponseDto { user_id: number; user_type: Exclude<UserTypeDto, "admin"> }
 
+export interface FlagReportReasonDto { Code: string; DisplayMessage: string }
+export interface FlagReportReasonsResponseDto { reasons: FlagReportReasonDto[] }
+export interface CreateFlagReportRequestDto { reason: string; notes?: string }
+export interface CreateFlagReportResponseDto { flag_report_id: number }
+export interface FlagReportDto {
+  id: number;
+  ResourceID: number;
+  UserID: number | null;
+  ReasonCode: string;
+  Notes: string;
+  CreationDate: string;
+  ResolutionDate: string | null;
+  IsSustained: boolean;
+  ResolutionUserID: number | null;
+  ResolutionNotes: string;
+}
+export interface FlagReportReviewDto extends FlagReportDto {
+  resource: ResourceWithMetadataDto;
+  reason: FlagReportReasonDto;
+}
+export interface PendingFlagReportsResponseDto { flag_reports: FlagReportReviewDto[] }
+export interface ResolveFlagReportRequestDto { is_sustained: boolean; resolution_notes?: string }
+export interface ResolveFlagReportResponseDto { flag_report: FlagReportDto }
+
 export interface ImportCheckRequestDto { file: Blob; filename: string }
 export interface ImportDebugDto {
   file_hash: string | null;
@@ -308,6 +332,18 @@ export class KlirosApi {
   }
   updateUserType(userId: number, request: UpdateUserTypeRequestDto, options: ApiRequestOptions = {}): Promise<UpdateUserTypeResponseDto> {
     return this.json(`/api/admin/users/${userId}/type`, this.jsonBody(request, "PATCH", options));
+  }
+  getFlagReportReasons(options: ApiRequestOptions = {}): Promise<FlagReportReasonsResponseDto> {
+    return this.json("/api/flag-report-reasons", options);
+  }
+  reportResource(resourceId: number, request: CreateFlagReportRequestDto, options: ApiRequestOptions = {}): Promise<CreateFlagReportResponseDto> {
+    return this.json(`/api/library/${resourceId}/flags`, this.jsonBody(request, "POST", options));
+  }
+  getPendingFlagReports(options: ApiRequestOptions = {}): Promise<PendingFlagReportsResponseDto> {
+    return this.json("/api/admin/flag-reports", options);
+  }
+  resolveFlagReport(reportId: number, request: ResolveFlagReportRequestDto, options: ApiRequestOptions = {}): Promise<ResolveFlagReportResponseDto> {
+    return this.json(`/api/admin/flag-reports/${reportId}/resolve`, this.jsonBody(request, "PATCH", options));
   }
   getResource(resourceId: number, options: ApiRequestOptions = {}): Promise<ResourceDetailResponseDto> {
     return this.json(`/api/library/${resourceId}`, options);

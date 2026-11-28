@@ -16,6 +16,10 @@ const deleteForm = document.querySelector("#delete-resource-form");
 const reportDialog = document.querySelector("#report-dialog");
 const reportForm = document.querySelector("#report-form");
 const reportThanks = document.querySelector("#report-thanks");
+const reportReason = document.querySelector("#report-reason");
+const reportError = document.querySelector("#report-error");
+const reportSubmit = document.querySelector("#report-submit");
+let reportReasonsLoaded = false;
 let detail = null;
 let metadataDefinitions = [];
 let session = null;
@@ -247,18 +251,67 @@ newCollectionForm.addEventListener("submit", async (event) => {
   await createAndSaveCollection(newCollectionForm.elements.name.value.trim());
 });
 
-document.querySelector("#open-report-dialog").addEventListener("click", () => {
+document.querySelector("#open-report-dialog").addEventListener("click", async () => {
   reportForm.hidden = false;
   reportThanks.hidden = true;
+  reportError.hidden = true;
   reportDialog.showModal();
+  if (reportReasonsLoaded) return;
+  reportSubmit.disabled = true;
+  reportReason.disabled = true;
+  try {
+    const response = await fetch("/api/flag-report-reasons");
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Report reasons could not be loaded.");
+    if (!Array.isArray(payload.reasons) || !payload.reasons.length) {
+      throw new Error("No report reasons are available.");
+    }
+    reportReason.replaceChildren();
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Choose a reason";
+    reportReason.append(placeholder);
+    for (const reason of payload.reasons) {
+      const option = document.createElement("option");
+      option.value = reason.Code;
+      option.textContent = reason.DisplayMessage;
+      reportReason.append(option);
+    }
+    reportReasonsLoaded = true;
+  } catch (error) {
+    reportError.textContent = error instanceof Error ? error.message : "Report reasons could not be loaded.";
+    reportError.hidden = false;
+  } finally {
+    reportSubmit.disabled = !reportReasonsLoaded;
+    reportReason.disabled = !reportReasonsLoaded;
+  }
 });
 document.querySelector("#close-report-dialog").addEventListener("click", () => reportDialog.close());
 document.querySelector("#cancel-report").addEventListener("click", () => reportDialog.close());
-reportForm.addEventListener("submit", (event) => {
+reportForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  reportForm.hidden = true;
-  reportThanks.hidden = false;
-  reportForm.reset();
+  reportError.hidden = true;
+  reportSubmit.disabled = true;
+  try {
+    const response = await fetch(`/api/library/${resourceId}/flags`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        reason: reportReason.value,
+        notes: document.querySelector("#report-details").value,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "The report could not be saved.");
+    reportForm.hidden = true;
+    reportThanks.hidden = false;
+    reportForm.reset();
+  } catch (error) {
+    reportError.textContent = error instanceof Error ? error.message : "A network error interrupted reporting.";
+    reportError.hidden = false;
+  } finally {
+    reportSubmit.disabled = !reportReasonsLoaded;
+  }
 });
 
 editMetadataButton.addEventListener("click", () => {

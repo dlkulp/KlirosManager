@@ -7,6 +7,9 @@ from data_manager import DataManager, METADATA_SEED
 
 
 def _downgrade_to_schema_8(database):
+    for name in ("flag_reports", "flag_report_reasons"):
+        database["tables"].pop(name, None)
+        database["next_ids"].pop(name, None)
     resource = database["tables"]["resource"]
     resource["columns"] = [
         column for column in resource["columns"]
@@ -57,7 +60,7 @@ class DataManagerTests(unittest.TestCase):
         self.assertTrue(manager.metadata_definitions()[0]["Core"])
         self.assertEqual(manager.metadata_definitions()[2]["Type"], "string")
         database = json.loads(database_path.read_text(encoding="utf-8"))
-        self.assertEqual(database["schema_version"], 9)
+        self.assertEqual(database["schema_version"], 10)
         self.assertIn("FileHash", [column["name"] for column in manager.table("resource")["columns"]])
         self.assertIn("ReviewerId", [column["name"] for column in manager.table("resource")["columns"]])
         self.assertIn("CreationDate", [column["name"] for column in manager.table("collection")["columns"]])
@@ -145,7 +148,7 @@ class DataManagerTests(unittest.TestCase):
         self.assertEqual(migrated.rows("resource")[0]["OriginalName"], "existing.pdf")
         self.assertTrue(migrated.rows("user")[0]["JoinedAt"])
         self.assertEqual(migrated.rows("user")[0]["UserType"], "admin")
-        self.assertEqual(json.loads(database_path.read_text(encoding="utf-8"))["schema_version"], 9)
+        self.assertEqual(json.loads(database_path.read_text(encoding="utf-8"))["schema_version"], 10)
 
     def test_migrates_user_types_and_updates_only_regular_or_moderator_users(self):
         database_path = self.tmp_path / "db.json"
@@ -199,7 +202,97 @@ class DataManagerTests(unittest.TestCase):
         self.assertTrue(migrated.rows("collection")[0]["CreationDate"])
         self.assertEqual(migrated.rows("collection")[0]["id"], collection["id"])
         saved = json.loads(database_path.read_text(encoding="utf-8"))
-        self.assertEqual(saved["schema_version"], 9)
+        self.assertEqual(saved["schema_version"], 10)
+
+    def test_flag_schema_migration_preserves_resources_and_seeds_reasons_once(self):
+        path = self.tmp_path / "db.json"
+        manager = DataManager(path)
+        resource = manager.insert_resource({"OriginalName": "score.pdf", "UserID": 1})
+        database = json.loads(path.read_text(encoding="utf-8"))
+        database["schema_version"] = 9
+        for name in ("flag_reports", "flag_report_reasons"):
+            database["tables"].pop(name, None)
+            database["next_ids"].pop(name, None)
+        path.write_text(json.dumps(database), encoding="utf-8")
+
+        migrated = DataManager(path)
+        self.assertEqual(migrated.rows("resource"), [resource])
+        self.assertEqual(
+            [reason["Code"] for reason in migrated.flag_report_reasons()],
+            ["copyright", "inappropriate", "not_church_music", "metadata_mismatch", "other"],
+        )
+        first = migrated.create_flag_report(resource["id"], None, "copyright", " Rights concern ")
+        reopened = DataManager(path)
+        second = reopened.create_flag_report(resource["id"], 3, "other", "")
+        self.assertEqual((first["id"], second["id"]), (1, 2))
+        self.assertEqual(first["Notes"], "Rights concern")
+        self.assertEqual(len(reopened.flag_report_reasons()), 5)
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["schema_version"], 10)
+
+    def test_flag_queue_is_oldest_first_and_resolution_preserves_the_resource(self):
+        path = self.tmp_path / "db.json"
+        manager = DataManager(path)
+        resource = manager.insert_resource({"OriginalName": "score.pdf", "UserID": 3})
+        reports = [manager.create_flag_report(resource["id"], None, "other", "") for _ in range(3)]
+        database = json.loads(path.read_text(encoding="utf-8"))
+        for report, created in zip(database["tables"]["flag_reports"]["rows"], [
+            "2026-01-02 00:00:00", "2026-01-01 00:00:00", "2026-01-01 00:00:00",
+        ]):
+            report["CreationDate"] = created
+        path.write_text(json.dumps(database), encoding="utf-8")
+
+        queue = manager.pending_flag_reports()
+        self.assertEqual([report["id"] for report in queue], [2, 3, 1])
+        self.assertEqual(queue[0]["resource"], resource)
+        self.assertEqual(queue[0]["reason"]["Code"], "other")
+        resolved = manager.resolve_flag_report(reports[1]["id"], 1, True, " Confirmed ")
+        self.assertTrue(resolved["IsSustained"])
+        self.assertEqual(resolved["ResolutionUserID"], 1)
+        self.assertEqual(resolved["ResolutionNotes"], "Confirmed")
+        self.assertTrue(resolved["ResolutionDate"])
+        self.assertEqual([report["id"] for report in manager.pending_flag_reports()], [3, 1])
+        self.assertEqual(DataManager(path).rows("resource"), [resource])
+        with self.assertRaisesRegex(ValueError, "already resolved"):
+            manager.resolve_flag_report(reports[1]["id"], 1, False, "Overwrite")
+
+    def test_flag_migration_does_not_rewrite_an_invalid_database(self):
+        path = self.tmp_path / "db.json"
+        DataManager(path)
+        database = json.loads(path.read_text(encoding="utf-8"))
+        database["schema_version"] = 9
+        for name in ("flag_reports", "flag_report_reasons"):
+            database["tables"].pop(name)
+            database["next_ids"].pop(name)
+        database["tables"]["resource"]["columns"][0]["name"] = "invalid"
+        original = json.dumps(database)
+        path.write_text(original, encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "schema for table 'resource'"):
+            DataManager(path)
+        self.assertEqual(path.read_text(encoding="utf-8"), original)
+
+    def test_flag_validation_and_admin_resolution_do_not_write_invalid_reports(self):
+        manager = DataManager(self.tmp_path / "db.json")
+        resource = manager.insert_resource({"OriginalName": "score.pdf", "UserID": 1})
+        for user_id, reason, notes in [
+            (999, "other", ""), (None, "unknown", ""), (None, "other", None),
+            (None, "other", "x" * 2001),
+        ]:
+            with self.subTest(user_id=user_id, reason=reason, notes_type=type(notes).__name__):
+                with self.assertRaises(ValueError):
+                    manager.create_flag_report(resource["id"], user_id, reason, notes)
+        self.assertEqual(manager.rows("flag_reports"), [])
+        report = manager.create_flag_report(resource["id"], None, "other", "")
+        self.assertEqual(report["id"], 1)
+        for user_id in (2, 3, 999):
+            with self.assertRaises(PermissionError):
+                manager.resolve_flag_report(report["id"], user_id, True, "")
+        for sustained in (1, "true", None):
+            with self.assertRaises(ValueError):
+                manager.resolve_flag_report(report["id"], 1, sustained, "")
+        self.assertIsNone(manager.rows("flag_reports")[0]["ResolutionDate"])
+        manager.delete_resource(resource["id"], 1)
+        self.assertIsNone(manager.create_flag_report(resource["id"], None, "other", ""))
+        self.assertEqual(len(manager.pending_flag_reports()), 1)
 
     def test_favorites_toggle_and_collection_members_are_private_and_unordered(self):
         manager = DataManager(self.tmp_path / "db.json")

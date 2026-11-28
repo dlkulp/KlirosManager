@@ -12,6 +12,23 @@ function element() {
   };
 }
 
+function interactiveElement() {
+  return {
+    children: [],
+    dataset: {},
+    handlers: {},
+    classList: { add() {} },
+    addEventListener(type, handler) { this.handlers[type] = handler; },
+    append(...children) { this.children.push(...children); },
+    replaceChildren(...children) { this.children = children; },
+    setAttribute() {},
+    removeAttribute() {},
+    showModal() { this.open = true; },
+    close() { this.open = false; },
+    reset() { this.wasReset = true; },
+  };
+}
+
 function setup(fetch) {
   const recent = element();
   const empty = { hidden: true };
@@ -83,25 +100,12 @@ test("cards with absent or empty metadata omit the summary", () => {
 
 test("import review uses the created resource and saves its metadata", async () => {
   const elements = new Map();
-  function createElement() {
-    return {
-      children: [],
-      dataset: {},
-      handlers: {},
-      classList: { add() {} },
-      addEventListener(type, handler) { this.handlers[type] = handler; },
-      append(...children) { this.children.push(...children); },
-      replaceChildren(...children) { this.children = children; },
-      setAttribute() {},
-      removeAttribute() {},
-    };
-  }
   const document = {
     querySelector(selector) {
-      if (!elements.has(selector)) elements.set(selector, createElement());
+      if (!elements.has(selector)) elements.set(selector, interactiveElement());
       return elements.get(selector);
     },
-    createElement,
+    createElement: interactiveElement,
   };
   const importForm = document.querySelector("#import-form");
   importForm.action = "/api/library/import/check";
@@ -156,4 +160,92 @@ test("import review uses the created resource and saves its metadata", async () 
     metadata: { "Tone Set": "Byzantine" },
   });
   assert.equal(document.querySelector("#finish-import-link").href, "/library/17");
+});
+
+async function setupDetailReporting(reportFetch) {
+  const elements = new Map();
+  const document = {
+    querySelector(selector) {
+      if (!elements.has(selector)) elements.set(selector, interactiveElement());
+      return elements.get(selector);
+    },
+    createElement: interactiveElement,
+  };
+  const fetch = async (url, options) => {
+    if (url === "/api/session") return { ok: true, json: async () => ({ logged_in: false }) };
+    if (url === "/api/site/metadata") return { ok: true, json: async () => ({ metadata_fields: [] }) };
+    if (url === "/api/library/17") return { ok: true, json: async () => ({
+      resource: { id: 17, title: "Score", UserID: 1 },
+      original_name: "score.png", download_url: "/api/library/17/download",
+      file_url: "/api/library/17/file", metadata: {}, uploader_initials: "LA",
+      uploader: { Name: "Local Admin", JoinedAt: "" }, is_favorite: false,
+    }) };
+    return reportFetch(url, options);
+  };
+  const context = vm.createContext({
+    document, fetch, window: { location: { pathname: "/library/17" } },
+  });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "static", "detail.js"), "utf8"), context);
+  await new Promise(setImmediate);
+  return document;
+}
+
+test("anonymous score reporting loads reason codes and confirms only a stored report", async () => {
+  const calls = [];
+  const ui = await setupDetailReporting(async (url, options) => {
+    calls.push({ url, options });
+    if (url === "/api/flag-report-reasons") return { ok: true, json: async () => ({
+      reasons: [{ Code: "copyright", DisplayMessage: "Copyright concern" }],
+    }) };
+    if (url === "/api/library/17/flags") return { ok: true, json: async () => ({ flag_report_id: 1 }) };
+    throw new Error(`Unexpected request: ${url}`);
+  });
+  await ui.querySelector("#open-report-dialog").handlers.click();
+  const reason = ui.querySelector("#report-reason");
+  assert.equal(reason.children[1].value, "copyright");
+  assert.equal(reason.children[1].textContent, "Copyright concern");
+  reason.value = "copyright";
+  ui.querySelector("#report-details").value = "Rights concern";
+  await ui.querySelector("#report-form").handlers.submit({ preventDefault() {} });
+  assert.equal(calls[1].url, "/api/library/17/flags");
+  assert.equal(calls[1].options.method, "POST");
+  assert.deepEqual(JSON.parse(calls[1].options.body), { reason: "copyright", notes: "Rights concern" });
+  assert.equal(ui.querySelector("#report-thanks").hidden, false);
+  assert.equal(ui.querySelector("#report-form").hidden, true);
+  assert.equal(ui.querySelector("#report-form").wasReset, true);
+});
+
+test("failed reporting preserves the draft and does not show success", async () => {
+  const ui = await setupDetailReporting(async (url) => {
+    if (url === "/api/flag-report-reasons") return { ok: true, json: async () => ({
+      reasons: [{ Code: "other", DisplayMessage: "Other" }],
+    }) };
+    return { ok: false, json: async () => ({ error: "Report could not be saved." }) };
+  });
+  await ui.querySelector("#open-report-dialog").handlers.click();
+  ui.querySelector("#report-reason").value = "other";
+  ui.querySelector("#report-details").value = "Keep my draft";
+  await ui.querySelector("#report-form").handlers.submit({ preventDefault() {} });
+  assert.equal(ui.querySelector("#report-thanks").hidden, true);
+  assert.equal(ui.querySelector("#report-form").hidden, false);
+  assert.equal(ui.querySelector("#report-form").wasReset, undefined);
+  assert.equal(ui.querySelector("#report-details").value, "Keep my draft");
+  assert.equal(ui.querySelector("#report-error").textContent, "Report could not be saved.");
+  assert.equal(ui.querySelector("#report-submit").disabled, false);
+});
+
+test("failed reason loading disables submission and can be retried", async () => {
+  let attempts = 0;
+  const ui = await setupDetailReporting(async () => {
+    attempts += 1;
+    return attempts === 1
+      ? { ok: false, json: async () => ({ error: "Reasons unavailable." }) }
+      : { ok: true, json: async () => ({ reasons: [{ Code: "other", DisplayMessage: "Other" }] }) };
+  });
+  await ui.querySelector("#open-report-dialog").handlers.click();
+  assert.equal(ui.querySelector("#report-submit").disabled, true);
+  assert.equal(ui.querySelector("#report-error").textContent, "Reasons unavailable.");
+  await ui.querySelector("#open-report-dialog").handlers.click();
+  assert.equal(attempts, 2);
+  assert.equal(ui.querySelector("#report-submit").disabled, false);
 });
